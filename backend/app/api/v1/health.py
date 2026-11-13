@@ -6,14 +6,20 @@ load balancers, monitoring, and the frontend readiness switch.
 
 from __future__ import annotations
 
+import logging
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app import __version__
 from app.core.config import settings
 from app.database import get_db
 
+logger = logging.getLogger("pajes.health")
 router = APIRouter(prefix="/health", tags=["health"])
 
 
@@ -27,18 +33,23 @@ def liveness() -> dict[str, str]:
     }
 
 
-@router.get("/ready", summary="Readiness probe — includes DB check")
-def readiness(db: Session = Depends(get_db)) -> dict[str, object]:
+@router.get("/ready", summary="Readiness probe — includes DB check", response_model=None)
+def readiness(db: Annotated[Session, Depends(get_db)]) -> dict[str, object] | JSONResponse:
     try:
         db.execute(text("SELECT 1"))
-        db_ok = True
-        detail = "connected"
-    except Exception as exc:  # noqa: BLE001 — any DB error = not ready
-        db_ok = False
-        detail = str(exc)
+    except SQLAlchemyError as exc:
+        logger.warning("Readiness database check failed (%s)", type(exc).__name__)
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "degraded",
+                "db": {"ok": False, "detail": "database unavailable"},
+                "code": status.HTTP_503_SERVICE_UNAVAILABLE,
+            },
+        )
 
     return {
-        "status": "ok" if db_ok else "degraded",
-        "db": {"ok": db_ok, "detail": detail},
-        "code": status.HTTP_200_OK if db_ok else status.HTTP_503_SERVICE_UNAVAILABLE,
+        "status": "ok",
+        "db": {"ok": True, "detail": "connected"},
+        "code": status.HTTP_200_OK,
     }

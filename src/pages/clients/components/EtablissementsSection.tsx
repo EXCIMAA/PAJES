@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Plus, Trash2, Edit2, X } from "lucide-react";
-import { supabase } from "../../../lib/supabase";
+import { clientsApi } from "../../../api/clients";
 import {
   ETABLISSEMENT_TYPES,
   ETABLISSEMENT_TYPE_LABELS,
@@ -45,15 +45,9 @@ export function EtablissementsSection({
     }
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("etablissements")
-        .select("*")
-        .eq("client_id", clientId)
-        .order("code", { ascending: true });
-
-      if (error) throw error;
-      setEtablissements(data || []);
-      onEtablissementsChange?.(data?.length || 0);
+      const data = await clientsApi.establishments(clientId);
+      setEtablissements(data);
+      onEtablissementsChange?.(data.length);
     } catch (err) {
       console.error("Erreur chargement établissements:", err);
     } finally {
@@ -97,16 +91,9 @@ export function EtablissementsSection({
       };
 
       if (editingId) {
-        const { error } = await supabase
-          .from("etablissements")
-          .update(payload)
-          .eq("id", editingId);
-        if (error) throw error;
+        await clientsApi.updateEstablishment(clientId, editingId, payload);
       } else {
-        const { error } = await supabase
-          .from("etablissements")
-          .insert([payload]);
-        if (error) throw error;
+        await clientsApi.createEstablishment(clientId, payload);
       }
 
       await loadEtablissements();
@@ -122,11 +109,7 @@ export function EtablissementsSection({
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Supprimer l'établissement "${name}" ?`)) return;
     try {
-      const { error } = await supabase
-        .from("etablissements")
-        .delete()
-        .eq("id", id);
-      if (error) throw error;
+      await clientsApi.deleteEstablishment(clientId, id);
       await loadEtablissements();
     } catch (err) {
       console.error("Erreur suppression:", err);

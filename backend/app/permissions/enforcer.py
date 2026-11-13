@@ -12,10 +12,10 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.security import decode_session_token
 from app.database import get_db
-from app.models.auth import AuthSession, Profile, RolePermission
+from app.models.auth import Profile, RolePermission
 from app.permissions.matrix import SUPER_ADMIN_ROLE, build_effective_matrix
+from app.services.auth_service import validate_session
 
 
 class PermissionService:
@@ -44,70 +44,19 @@ class PermissionService:
         return has_permission(self._matrix, role, module, action)
 
 
-def get_current_user_id(request: Request) -> str | None:
-    token = request.cookies.get(settings.auth_cookie_name)
-    if not token:
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            token = auth_header.removeprefix("Bearer ")
-    if not token:
-        return None
-    payload = decode_session_token(token)
-    if not payload:
-        return None
-    return payload.get("sub")
-
-
-def _get_token_payload(request: Request) -> dict | None:
-    token = request.cookies.get(settings.auth_cookie_name)
-    if not token:
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            token = auth_header.removeprefix("Bearer ")
-    if not token:
-        return None
-    return decode_session_token(token)
-
-
 def get_current_profile(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
 ) -> Profile:
-    payload = _get_token_payload(request)
-    if not payload:
+    validated = validate_session(
+        db, request.cookies.get(settings.auth_cookie_name)
+    )
+    if not validated:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
         )
-    user_id = payload.get("sub")
-    jti = payload.get("jti")
-
-    # Check session revocation if JTI is present
-    if jti:
-        session = db.query(AuthSession).filter(AuthSession.token_jti == jti).first()
-        if not session or session.revoked:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Session revoked",
-            )
-
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-        )
-    profile = db.query(Profile).filter(Profile.id == user_id).first()
-    if not profile:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Profile not found",
-        )
-    user = profile.user
-    if user and not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is deactivated",
-        )
+    profile, _session = validated
     return profile
 
 

@@ -1,4 +1,3 @@
-// src/contexts/AuthContext.tsx
 import {
   createContext,
   useContext,
@@ -7,41 +6,63 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { supabase } from "../lib/supabase";
+import { authApi, type AuthProfile } from "../api/auth";
+import {
+  API_UNAUTHORIZED_EVENT,
+  ApiError,
+  ApiNetworkError,
+  ApiTimeoutError,
+} from "../lib/api";
 
-// ============================================================
-// TYPES
-// ============================================================
 export interface AuthUser {
   id: string;
   email: string;
   full_name?: string;
+  first_name?: string;
+  last_name?: string;
+  initials?: string;
   role?: string | null;
   department?: string;
   phone?: string;
   created_at?: string;
 }
 
+interface AuthSession {
+  user: AuthUser;
+}
+
 interface SignUpParams {
   email: string;
-  password: string;
   firstName: string;
   lastName: string;
 }
 
 interface AuthContextType {
   user: AuthUser | null;
-  profile: any | null;
-  session: any | null;
+  profile: AuthUser | null;
+  session: AuthSession | null;
   loading: boolean;
   isDemo: boolean;
+  authError: string | null;
   signIn: (
     email: string,
     password: string,
   ) => Promise<{ error: string | null }>;
   signUp: (params: SignUpParams) => Promise<{ error: string | null }>;
+  activateAccount: (
+    token: string,
+    password: string,
+  ) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
+  changePassword: (
+    currentPassword: string,
+    newPassword: string,
+  ) => Promise<{ error: string | null }>;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
+  confirmPasswordReset: (
+    token: string,
+    newPassword: string,
+  ) => Promise<{ error: string | null }>;
   signInDemo: () => Promise<void>;
   exitDemo: () => void;
 }
@@ -52,23 +73,21 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   loading: true,
   isDemo: false,
+  authError: null,
   signIn: async () => ({ error: "Not implemented" }),
   signUp: async () => ({ error: "Not implemented" }),
+  activateAccount: async () => ({ error: "Not implemented" }),
   signOut: async () => {},
+  changePassword: async () => ({ error: "Not implemented" }),
   resetPassword: async () => ({ error: "Not implemented" }),
+  confirmPasswordReset: async () => ({ error: "Not implemented" }),
   signInDemo: async () => {},
   exitDemo: () => {},
 });
 
-// ============================================================
-// STORAGE KEYS
-// ============================================================
 const DEMO_KEY = "pajes_demo_mode";
 const USER_ROLE_KEY = "pajes_user_role";
 
-// ============================================================
-// DEMO USER (no role → view-only)
-// ============================================================
 const DEMO_USER: AuthUser = {
   id: "demo-user",
   email: "demo@pajes.com",
@@ -78,26 +97,38 @@ const DEMO_USER: AuthUser = {
   created_at: new Date().toISOString(),
 };
 
-// ============================================================
-// ERROR SANITIZATION — prevent email enumeration
-// ============================================================
+function toAuthUser(profile: AuthProfile): AuthUser {
+  const [firstName = "", ...lastNameParts] = profile.full_name.trim().split(/\s+/);
+  const lastName = lastNameParts.join(" ");
+  return {
+    id: profile.id,
+    email: profile.email,
+    full_name: profile.full_name,
+    first_name: firstName,
+    last_name: lastName,
+    initials: `${firstName[0] ?? ""}${lastName[0] ?? ""}`.toUpperCase(),
+    role: profile.role,
+    department: profile.department ?? "",
+    phone: profile.phone ?? "",
+    created_at: profile.created_at ?? undefined,
+  };
+}
+
 function sanitizeAuthError(message: string): string {
   const lower = message.toLowerCase();
-  if (lower.includes("invalid login credentials") || lower.includes("invalid credentials")) {
-    return "Email ou mot de passe incorrect.";
-  }
-  if (lower.includes("user not found") || lower.includes("user not registered")) {
-    return "Email ou mot de passe incorrect.";
-  }
-  if (lower.includes("email not confirmed")) {
+  if (
+    lower.includes("incorrect") ||
+    lower.includes("invalid login credentials") ||
+    lower.includes("invalid credentials") ||
+    lower.includes("user not found") ||
+    lower.includes("user not registered") ||
+    lower.includes("email not confirmed")
+  ) {
     return "Email ou mot de passe incorrect.";
   }
   return message;
 }
 
-// ============================================================
-// STORAGE HELPERS
-// ============================================================
 const readDemoFlag = (): boolean => {
   try {
     return localStorage.getItem(DEMO_KEY) === "true";
@@ -106,17 +137,15 @@ const readDemoFlag = (): boolean => {
   }
 };
 
-const writeDemoFlag = (value: boolean) => {
+function writeDemoFlag(value: boolean) {
   try {
-    if (value) {
-      localStorage.setItem(DEMO_KEY, "true");
-    } else {
-      localStorage.removeItem(DEMO_KEY);
-    }
-  } catch {}
-};
+    if (value) localStorage.setItem(DEMO_KEY, "true");
+    else localStorage.removeItem(DEMO_KEY);
+  } catch (error) {
+    console.error("[AuthContext] Impossible de mettre à jour le mode démo.", error);
+  }
+}
 
-// ⭐ Sync the user's role to localStorage so supabase.ts / WriteBlocker can detect it
 function syncUserRoleToStorage(role: string | null | undefined) {
   try {
     if (role && role !== "null" && role !== "undefined") {
@@ -124,66 +153,42 @@ function syncUserRoleToStorage(role: string | null | undefined) {
     } else {
       localStorage.removeItem(USER_ROLE_KEY);
     }
-  } catch {}
+  } catch (error) {
+    console.error("[AuthContext] Impossible de synchroniser le rôle utilisateur.", error);
+  }
 }
 
-// ============================================================
-// PROVIDER
-// ============================================================
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Initialize state from localStorage
   const [isDemo, setIsDemo] = useState<boolean>(readDemoFlag);
   const [user, setUser] = useState<AuthUser | null>(() =>
     readDemoFlag() ? DEMO_USER : null,
   );
-  const [profile, setProfile] = useState<any | null>(() =>
+  const [profile, setProfile] = useState<AuthUser | null>(() =>
     readDemoFlag() ? DEMO_USER : null,
   );
-  const [session, setSession] = useState<any | null>(() =>
+  const [session, setSession] = useState<AuthSession | null>(() =>
     readDemoFlag() ? { user: DEMO_USER } : null,
   );
   const [loading, setLoading] = useState(!readDemoFlag());
+  const [authError, setAuthError] = useState<string | null>(null);
 
-  // ============================================================
-  // LOAD PROFILE FROM SUPABASE
-  // ============================================================
-  const loadProfile = useCallback(
-    async (userId: string, email: string): Promise<AuthUser> => {
-      try {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", userId)
-          .maybeSingle();
+  const clearSession = useCallback(() => {
+    setUser(null);
+    setProfile(null);
+    setSession(null);
+    syncUserRoleToStorage(null);
+  }, []);
 
-        if (error) {
-          console.error("[AuthContext] Erreur chargement profil:", error);
-        }
+  const acceptProfile = useCallback((response: AuthProfile) => {
+    const authUser = toAuthUser(response);
+    setUser(authUser);
+    setProfile(authUser);
+    setSession({ user: authUser });
+    syncUserRoleToStorage(authUser.role);
+  }, []);
 
-        return {
-          id: userId,
-          email,
-          full_name: data?.full_name ?? "",
-          role: data?.role ?? null,
-          department: data?.department ?? "",
-          phone: data?.phone ?? "",
-          created_at: data?.created_at,
-        };
-      } catch (err) {
-        console.error("[AuthContext] Exception loadProfile:", err);
-        return { id: userId, email, role: null };
-      }
-    },
-    [],
-  );
-
-  // ============================================================
-  // INIT (only runs if NOT in demo mode)
-  // ============================================================
   useEffect(() => {
-    // If we're in demo mode, skip all Supabase initialization
     if (readDemoFlag()) {
-      console.log("[AuthContext] Demo mode active — skipping Supabase init");
       setIsDemo(true);
       setUser(DEMO_USER);
       setProfile(DEMO_USER);
@@ -194,202 +199,194 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let mounted = true;
-
-    const init = async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-
-        if (!mounted) return;
-
-        if (data?.session?.user) {
-          setSession(data.session);
-          const u = data.session.user;
-          const authUser = await loadProfile(u.id, u.email ?? "");
-          if (!mounted) return;
-          setUser(authUser);
-          setProfile(authUser);
-          syncUserRoleToStorage(authUser.role); // ⭐ Sync role
-        } else {
-          setUser(null);
-          setProfile(null);
-          setSession(null);
-          syncUserRoleToStorage(null); // ⭐ Clear role
-        }
-      } catch (err) {
-        console.error("[AuthContext] init error:", err);
-      } finally {
-        if (mounted) setLoading(false);
-      }
+    const handleUnauthorized = () => {
+      if (!mounted) return;
+      setIsDemo(false);
+      clearSession();
+      setAuthError("Votre session a expiré. Veuillez vous reconnecter.");
     };
 
-    init();
-
-    // Auth listener
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, s) => {
-      if (readDemoFlag()) return;
-      if (!mounted) return;
-
-      setSession(s);
-      if (s?.user) {
-        const authUser = await loadProfile(s.user.id, s.user.email ?? "");
+    window.addEventListener(API_UNAUTHORIZED_EVENT, handleUnauthorized);
+    void authApi
+      .currentProfile()
+      .then((response) => {
+        if (mounted) {
+          setAuthError(null);
+          acceptProfile(response);
+        }
+      })
+      .catch((error: unknown) => {
         if (!mounted) return;
-        setUser(authUser);
-        setProfile(authUser);
-        syncUserRoleToStorage(authUser.role); // ⭐ Sync role
-      } else {
-        setUser(null);
-        setProfile(null);
-        syncUserRoleToStorage(null); // ⭐ Clear role
-      }
-    });
+        // 401 is a normal unauthenticated state, not an error to surface.
+        if (error instanceof ApiError && error.status === 401) {
+          clearSession();
+          setAuthError(null);
+          return;
+        }
+        if (error instanceof ApiError) {
+          // Other HTTP statuses (403/422/429/500/503) are real backend
+          // errors; surface their message but never as a network failure.
+          setAuthError(error.message);
+          clearSession();
+          return;
+        }
+        // Only genuine transport/CORS failures reach here as ApiNetworkError.
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Impossible de charger votre profil.";
+        console.error("[AuthContext] Échec du chargement du profil.", error);
+        setAuthError(message);
+        clearSession();
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
 
     return () => {
       mounted = false;
-      sub.subscription.unsubscribe();
+      window.removeEventListener(API_UNAUTHORIZED_EVENT, handleUnauthorized);
     };
-  }, [loadProfile]);
+  }, [acceptProfile, clearSession]);
 
-  // ============================================================
-  // SIGN IN
-  // ============================================================
   const signIn = async (email: string, password: string) => {
     writeDemoFlag(false);
     setIsDemo(false);
-    syncUserRoleToStorage(null); // Reset role
+    setAuthError(null);
+    clearSession();
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      return { error: sanitizeAuthError(error.message) };
+    try {
+      acceptProfile(await authApi.login(email, password));
+      return { error: null };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Une erreur est survenue.";
+      return { error: sanitizeAuthError(message) };
     }
-
-    if (data.user) {
-      const authUser = await loadProfile(data.user.id, data.user.email ?? "");
-      setUser(authUser);
-      setProfile(authUser);
-      setSession(data.session);
-      syncUserRoleToStorage(authUser.role);
-    }
-    return { error: null };
   };
 
-  // ============================================================
-  // SIGN UP (no role → view-only)
-  // ============================================================
   const signUp = async ({
     email,
-    password,
     firstName,
     lastName,
   }: SignUpParams) => {
     writeDemoFlag(false);
     setIsDemo(false);
-    syncUserRoleToStorage(null); // Reset role
-
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          first_name: firstName,
-          last_name: lastName,
-          full_name: `${firstName} ${lastName}`,
-        },
-      },
-    });
-
-    if (error) {
-      return { error: sanitizeAuthError(error.message) };
-    }
-
-    if (data.user) {
-      const fullName = `${firstName} ${lastName}`.trim();
-
-      const { error: profileError } = await supabase.from("profiles").upsert({
-        id: data.user.id,
-        email: data.user.email,
-        full_name: fullName,
-        // role: intentionally omitted → null
-      });
-
-      if (profileError) {
-        console.error("[AuthContext] Erreur création profil:", profileError);
-      }
-
-      const authUser: AuthUser = {
-        id: data.user.id,
-        email: data.user.email ?? "",
-        full_name: fullName,
-        role: null,
-        created_at: new Date().toISOString(),
-      };
-      setUser(authUser);
-      setProfile(authUser);
-      syncUserRoleToStorage(null); // ⭐ No role
-    }
-
-    return { error: null };
-  };
-
-  // ============================================================
-  // SIGN OUT
-  // ============================================================
-  const signOut = async () => {
-    writeDemoFlag(false);
-    setIsDemo(false);
-    setUser(null);
-    setProfile(null);
-    setSession(null);
-    syncUserRoleToStorage(null); // ⭐ Clear role
+    setAuthError(null);
+    clearSession();
 
     try {
-      await supabase.auth.signOut();
-    } catch {}
+      await authApi.signup({
+        email,
+        first_name: firstName,
+        last_name: lastName,
+      });
+      return { error: null };
+    } catch (error) {
+      if (error instanceof ApiTimeoutError) {
+        return { error: "auth.errors.signupTimeout" };
+      }
+      if (error instanceof ApiNetworkError) {
+        return { error: "auth.errors.signupNetwork" };
+      }
+      if (error instanceof ApiError) {
+        const errorKeys: Record<number, string> = {
+          409: "auth.errors.signupDuplicate",
+          422: "auth.errors.signupValidation",
+          500: "auth.errors.signupFailed",
+          503: "auth.errors.signupUnavailable",
+        };
+        return {
+          error: errorKeys[error.status] ?? "auth.errors.signupFailed",
+        };
+      }
+      return { error: "auth.errors.signupFailed" };
+    }
   };
 
-  // ============================================================
-  // EXIT DEMO (called from banner)
-  // ============================================================
-  const exitDemo = () => {
+  const activateAccount = async (token: string, password: string) => {
+    try {
+      await authApi.activateAccount(token, password);
+      return { error: null };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : "Une erreur est survenue.",
+      };
+    }
+  };
+
+  const signOut = async () => {
+    const shouldRevokeSession = !isDemo && Boolean(user);
     writeDemoFlag(false);
     setIsDemo(false);
-    setUser(null);
-    setProfile(null);
-    setSession(null);
-    syncUserRoleToStorage(null); // ⭐ Clear role
-  };
+    setAuthError(null);
+    clearSession();
 
-  // ============================================================
-  // RESET PASSWORD
-  // ============================================================
-  const resetPassword = async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-
-    if (error) {
-      return { error: error.message };
+    if (!shouldRevokeSession) return;
+    try {
+      await authApi.logout();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "La déconnexion a échoué.";
+      console.error("[AuthContext] La révocation de session a échoué.", error);
+      setAuthError(message);
     }
-    return { error: null };
   };
 
-  // ============================================================
-  // SIGN IN DEMO (view-only, writes blocked)
-  // ============================================================
+  const changePassword = async (
+    currentPassword: string,
+    newPassword: string,
+  ) => {
+    try {
+      await authApi.changePassword(currentPassword, newPassword);
+      clearSession();
+      return { error: null };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : "Une erreur est survenue.",
+      };
+    }
+  };
+
+  const resetPassword = async (email: string) => {
+    try {
+      await authApi.requestPasswordReset(email);
+      return { error: null };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : "Une erreur est survenue.",
+      };
+    }
+  };
+
+  const confirmPasswordReset = async (token: string, newPassword: string) => {
+    try {
+      await authApi.confirmPasswordReset(token, newPassword);
+      clearSession();
+      return { error: null };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : "Une erreur est survenue.",
+      };
+    }
+  };
+
   const signInDemo = async () => {
-    console.log("[AuthContext] signInDemo() — activating demo mode");
-
     writeDemoFlag(true);
-    syncUserRoleToStorage(null); // ⭐ Demo = no role
-
+    syncUserRoleToStorage(null);
+    setAuthError(null);
     setIsDemo(true);
     setUser(DEMO_USER);
     setProfile(DEMO_USER);
     setSession({ user: DEMO_USER });
     setLoading(false);
+  };
+
+  const exitDemo = () => {
+    writeDemoFlag(false);
+    setIsDemo(false);
+    setAuthError(null);
+    clearSession();
   };
 
   return (
@@ -400,10 +397,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         loading,
         isDemo,
+        authError,
         signIn,
         signUp,
+        activateAccount,
         signOut,
+        changePassword,
         resetPassword,
+        confirmPasswordReset,
         signInDemo,
         exitDemo,
       }}

@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Menu, LogOut, Settings, ChevronDown, Search } from "lucide-react";
 import { cn } from "../../lib/utils";
-import { useAuth, type AuthUser } from "../../contexts/AuthContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { useTranslation } from "react-i18next";
 import { NotificationBadge } from "../ui/NotificationBadge";
 import { GlobalSearch } from "../ui/GlobalSearch";
@@ -29,35 +29,9 @@ export function TopBar({
   isDemo,
 }: TopBarProps) {
   const navigate = useNavigate();
-  const { signOut, user: authUser } = useAuth(); // 👈 récupération de signOut et de l'utilisateur
+  const { signOut, user } = useAuth();
   const { t } = useTranslation();
   const [showUserMenu, setShowUserMenu] = useState(false);
-
-  // On utilise l'utilisateur du contexte Auth s'il existe,
-  // sinon on garde la récupération locale (sécurité).
-  const [localUser, setLocalUser] = useState<AuthUser | null>(null);
-
-  useEffect(() => {
-    // Priorité à l'utilisateur du contexte (plus fiable)
-    if (authUser) {
-      setLocalUser(authUser);
-    } else {
-      // Fallback si le contexte n'a pas encore chargé l'utilisateur
-      import("../../lib/supabase").then(({ supabase }) => {
-        supabase.auth.getUser().then(({ data }) => {
-          if (data?.user) {
-            setLocalUser({
-              id: data.user.id,
-              email: data.user.email ?? "",
-              full_name: data.user.user_metadata?.full_name,
-            });
-          }
-        });
-      });
-    }
-  }, [authUser]);
-
-  const user = localUser || authUser;
 
   const handleLogout = async () => {
     await signOut(); // nettoie session, isDemo, etc.

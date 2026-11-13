@@ -25,7 +25,10 @@ class Settings(BaseSettings):
     app_name: str = "PAJES API"
     app_env: Literal["development", "staging", "production"] = "development"
     app_debug: bool = False
-    cors_origins: str = "http://localhost:5173,http://localhost:5174"
+    cors_origins: str = (
+        "http://localhost:5173,http://localhost:5174,"
+        "http://127.0.0.1:5173,http://127.0.0.1:5174"
+    )
     secure_cookies: bool = False
 
     # ── PostgreSQL ─────────────────────────────────────────────────────────
@@ -45,6 +48,8 @@ class Settings(BaseSettings):
     auth_secret_key: str = "change_this_to_a_long_random_secret"
     auth_cookie_name: str = "pajes_session"
     auth_session_ttl_minutes: int = 480
+    activation_token_ttl_hours: int = 24
+    password_reset_token_ttl_minutes: int = 30
     argon2_time_cost: int = 3
     argon2_memory_cost: int = 65536
     argon2_parallelism: int = 2
@@ -52,6 +57,9 @@ class Settings(BaseSettings):
     # ── Rate limiting ──────────────────────────────────────────────────────
     login_rate_limit_per_minute: int = 10
     login_rate_window_seconds: int = 60
+    signup_rate_limit_per_minute: int = 5
+    activation_rate_limit_per_minute: int = 10
+    password_reset_rate_limit_per_minute: int = 5
 
     # ── CSRF ───────────────────────────────────────────────────────────────
     csrf_enabled: bool = True
@@ -69,7 +77,7 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     sendgrid_api_key: str | None = None
     postmark_api_key: str | None = None
-    frontend_url: str = "http://localhost:5173"
+    frontend_url: str = "http://127.0.0.1:5174"
 
     # ── File storage ───────────────────────────────────────────────────────
     storage_backend: Literal["local", "s3"] = "local"
@@ -98,8 +106,20 @@ class Settings(BaseSettings):
         return self.app_env == "production"
 
     @property
+    def secure_auth_cookies(self) -> bool:
+        return self.secure_cookies or self.is_production
+
+    @property
     def cors_origin_list(self) -> list[str]:
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        origins = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        aliases: list[str] = []
+        for origin in origins:
+            for scheme in ("http://", "https://"):
+                if origin.startswith(f"{scheme}localhost:"):
+                    aliases.append(origin.replace("localhost:", "127.0.0.1:", 1))
+                elif origin.startswith(f"{scheme}127.0.0.1:"):
+                    aliases.append(origin.replace("127.0.0.1:", "localhost:", 1))
+        return list(dict.fromkeys([*origins, *aliases]))
 
     def effective_database_url(self) -> str:
         if self.database_url:

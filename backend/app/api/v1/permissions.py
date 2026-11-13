@@ -9,7 +9,11 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.auth import Profile, RolePermission
-from app.permissions.enforcer import PermissionService, require_admin
+from app.permissions.enforcer import (
+    PermissionService,
+    get_current_profile,
+    require_admin,
+)
 from app.permissions.matrix import (
     ALL_MODULES,
     ALL_ROLES,
@@ -25,6 +29,19 @@ from app.schemas.auth import (
 )
 
 router = APIRouter(prefix="/permissions", tags=["permissions"])
+
+
+@router.get("/me", response_model=dict)
+def get_my_permissions(
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Return only the effective permissions for the authenticated user's role."""
+    matrix = PermissionService(db).matrix
+    return {
+        "role": profile.role,
+        "permissions": matrix.get(profile.role, {}) if profile.role else {},
+    }
 
 
 @router.get("/matrix", response_model=dict)

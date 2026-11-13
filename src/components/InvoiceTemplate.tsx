@@ -7,10 +7,10 @@ interface Line {
   id: string;
   section: "HONORAIRES" | "RETENUS" | "DEBOURS";
   designation: string;
-  unite?: number;
-  taux?: number;
-  montant: number;
-  comments?: string;
+  unite?: number | string | null;
+  taux?: number | string | null;
+  montant: number | string;
+  comments?: string | null;
 }
 
 interface InvoiceTemplateProps {
@@ -20,16 +20,16 @@ interface InvoiceTemplateProps {
     date_emission: string;
     type_document: string; // "FACTURE" | "PRO-FORMA" | "AVOIR"
     client_details_snapshot?: {
-      name: string;
-      address_bp: string;
-      nui: string;
-      rccm: string;
+      name?: string;
+      address_bp?: string;
+      nui?: string;
+      rccm?: string;
       country?: string;
-    };
+    } | null;
     currency: string;
-    signature_company?: string;
-    signature_client?: string;
-    payment_method?: string;
+    signature_company?: string | null;
+    signature_client?: string | null;
+    payment_method?: string | null;
   };
   lines: Line[];
   totals: {
@@ -52,9 +52,9 @@ export const InvoiceTemplate: React.FC<InvoiceTemplateProps> = ({
   const retenues = lines.filter((l) => l.section === "RETENUS");
   const debours = lines.filter((l) => l.section === "DEBOURS");
 
-  const honoraires_total = honors.reduce((sum, l) => sum + l.montant, 0);
-  const retenus_total = retenues.reduce((sum, l) => sum + l.montant, 0);
-  const debours_total = debours.reduce((sum, l) => sum + l.montant, 0);
+  const honoraires_total = honors.reduce((sum, l) => sum + Number(l.montant), 0);
+  const retenus_total = retenues.reduce((sum, l) => sum + Number(l.montant), 0);
+  const debours_total = debours.reduce((sum, l) => sum + Number(l.montant), 0);
 
   const total_ht = honoraires_total;
   const tva_amount = honoraires_total * 0.1925;
@@ -347,13 +347,13 @@ export const InvoiceTemplate: React.FC<InvoiceTemplateProps> = ({
                       {honorairesText}
                     </td>
                     <td className="px-2 py-1 text-center text-black border border-slate-300">
-                      {formatNumber(l.unite || 0)}
+                      {formatNumber(Number(l.unite || 0))}
                     </td>
                     <td className="px-2 py-1 text-center text-black border border-slate-300">
-                      {l.taux || 0}%
+                      {Number(l.taux || 0)}%
                     </td>
                     <td className="px-2 py-1 text-right text-black font-medium border border-slate-300">
-                      {formatNumber(l.montant)}
+                      {formatNumber(Number(l.montant))}
                     </td>
                     <td className="px-2 py-1 text-black border border-slate-300">
                       {l.comments || "—"}
@@ -421,13 +421,13 @@ export const InvoiceTemplate: React.FC<InvoiceTemplateProps> = ({
                     {l.designation}
                   </td>
                   <td className="px-2 py-1 text-center text-black border border-slate-300">
-                    {formatNumber(l.unite || 0)}
+                    {formatNumber(Number(l.unite || 0))}
                   </td>
                   <td className="px-2 py-1 text-center text-black border border-slate-300">
-                    {l.taux || 0}%
+                    {Number(l.taux || 0)}%
                   </td>
                   <td className="px-2 py-1 text-right text-black font-medium border border-slate-300">
-                    {formatNumber(l.montant)}
+                    {formatNumber(Number(l.montant))}
                   </td>
                 </tr>
               ))}
@@ -479,13 +479,13 @@ export const InvoiceTemplate: React.FC<InvoiceTemplateProps> = ({
                     {l.designation}
                   </td>
                   <td className="px-2 py-1 text-center text-black border border-slate-300">
-                    {formatNumber(l.unite || 0)}
+                    {formatNumber(Number(l.unite || 0))}
                   </td>
                   <td className="px-2 py-1 text-center text-black border border-slate-300">
-                    {l.taux || 0}%
+                    {Number(l.taux || 0)}%
                   </td>
                   <td className="px-2 py-1 text-right text-black font-medium border border-slate-300">
-                    {formatNumber(l.montant)}
+                    {formatNumber(Number(l.montant))}
                   </td>
                 </tr>
               ))}

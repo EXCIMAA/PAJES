@@ -1,5 +1,4 @@
 import { TVA_RATE } from './constants';
-import { supabase } from './supabase';
 
 export type LineSection = 'HONORAIRES' | 'RETENUS' | 'DEBOURS';
 
@@ -35,69 +34,6 @@ export function generateRefPF(firstName: string, lastName: string, dateEmission:
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const year = d.getFullYear();
   return `${initials}${day}${month}${year}`;
-}
-
-export async function getNextInvoiceSequence(initials: string, month: number): Promise<number> {
-  try {
-    const prefix = `EXCIMAA/FAC${String(month).padStart(2, '0')}/${(initials || 'XX').toUpperCase()}/`;
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('invoice_number')
-      .like('invoice_number', `${prefix}%`);
-
-    if (error) {
-      console.error('Error fetching invoice sequences:', error);
-      return 1;
-    }
-
-    if (!data || data.length === 0) {
-      return 1;
-    }
-
-    const sequences = data
-      .map((invoice) => {
-        const match = invoice.invoice_number?.match(/\/([0-9]+)$/);
-        return match ? parseInt(match[1], 10) : 0;
-      })
-      .filter((seq) => !Number.isNaN(seq));
-
-    const maxSequence = sequences.length > 0 ? Math.max(...sequences) : 0;
-    return maxSequence + 1;
-  } catch (error) {
-    console.error('Error in getNextInvoiceSequence:', error);
-    return 1;
-  }
-}
-
-export async function getNextRefPFSequence(refPFBase: string): Promise<number> {
-  try {
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('ref_pf')
-      .like('ref_pf', `${refPFBase}-%`);
-
-    if (error) {
-      console.error('Error fetching ref_pf sequences:', error);
-      return 1;
-    }
-
-    if (!data || data.length === 0) {
-      return 1;
-    }
-
-    const sequences = data
-      .map(invoice => {
-        const match = invoice.ref_pf.match(new RegExp(`^${refPFBase}-(\\d+)$`));
-        return match ? parseInt(match[1], 10) : 0;
-      })
-      .filter(seq => !isNaN(seq));
-
-    const maxSequence = sequences.length > 0 ? Math.max(...sequences) : 0;
-    return maxSequence + 1;
-  } catch (error) {
-    console.error('Error in getNextRefPFSequence:', error);
-    return 1;
-  }
 }
 
 // ✅ computeTotals avec paramètre typeDocument

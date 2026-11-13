@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { notificationsApi } from "../api/notifications";
 
 export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   all: "Toutes",
@@ -23,39 +23,21 @@ export type NotificationPayload = {
   title: string;
   message?: string | null; // rendu optionnel
   type?: string;
-  userId?: string;
 };
 
 export async function addNotification({
   title,
   message,
   type = "alert",
-  userId,
 }: NotificationPayload) {
+  const finalMessage = message?.trim() || `Notification : ${title}`;
   try {
-    const finalUserId =
-      userId || (await supabase.auth.getUser()).data.user?.id;
-
-    if (!finalUserId) {
-      return;
-    }
-
-    // Fournir un message par défaut si message est vide
-    const finalMessage = message?.trim() || `Notification : ${title}`;
-
-    const { error } = await supabase.from("notifications").insert({
+    await notificationsApi.create({
       title,
       message: finalMessage,
       type,
-      user_id: finalUserId,
-      read: false,
-      created_at: new Date().toISOString(),
     });
-
-    if (error) {
-      console.error("Notification non enregistrée:", error.message);
-    }
   } catch (err) {
-    console.error("Erreur notification:", err);
+    console.error("Notification non enregistrée:", err);
   }
 }

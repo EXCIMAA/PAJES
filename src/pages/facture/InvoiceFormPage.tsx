@@ -3,9 +3,10 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Plus, X, Save, Trash2 } from "lucide-react";
 import { addNotification } from "../../lib/notifications";
-import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
 import { useCountry } from "../../contexts/CountryContext";
+import { clientsApi } from "../../api/clients";
+import { invoicesApi } from "../../api/invoices";
 import {
   RETENUES_RATES,
   PAYMENT_METHODS,
@@ -16,8 +17,6 @@ import {
   computeTotals,
   formatNumber,
   generateRefPF,
-  getNextInvoiceSequence,
-  getNextRefPFSequence,
   mapSystemClient,
   getInvoiceUserNames,
   buildUserInitials,
@@ -60,9 +59,28 @@ export default function InvoiceFormPage() {
 
   const generateReference = async () => {
     if (!firstName || !invoiceDate) return;
-    const baseRef = generateRefPF(firstName, lastName, invoiceDate);
-    const sequence = await getNextRefPFSequence(baseRef);
-    setRefPf(`${baseRef}-${String(sequence).padStart(3, "0")}`);
+    try {
+      const baseRef = generateRefPF(firstName, lastName, invoiceDate);
+      const initials = (
+        profile?.initials ||
+        buildUserInitials(firstName, lastName) ||
+        "XX"
+      ).toUpperCase();
+      const preview = await invoicesApi.previewNumber({
+        date_emission: invoiceDate,
+        initials,
+        reference_base: baseRef,
+      });
+      setRefPf(preview.ref_pf);
+      setError(null);
+    } catch (previewError) {
+      setRefPf("");
+      setError(
+        previewError instanceof Error
+          ? previewError.message
+          : "Impossible de générer la référence de facture.",
+      );
+    }
   };
 
   useEffect(() => {
@@ -78,54 +96,37 @@ export default function InvoiceFormPage() {
       setError(null);
 
       try {
-        const { data: clientRows, error: clientsError } = await supabase
-          .from("clients")
-          .select("*")
-          .order("name");
-
-        if (clientsError) throw new Error(clientsError.message);
-
-        const loadedClients = (clientRows || []).map((row) =>
+        const clientRows = await clientsApi.list();
+        const loadedClients = clientRows.map((row) =>
           mapSystemClient(row as Record<string, unknown>),
         );
         if (cancelled) return;
         setClients(loadedClients);
 
         if (invoiceId) {
-          const invRes = await supabase
-            .from("invoices")
-            .select("*")
-            .eq("id", invoiceId)
-            .maybeSingle();
-
-          if (invRes.error) throw new Error(invRes.error.message);
-
-          const linesRes = await supabase
-            .from("invoice_lines")
-            .select("*")
-            .eq("invoice_id", invoiceId)
-            .order("sort_order");
-
-          if (linesRes.error) throw new Error(linesRes.error.message);
-
-          if (invRes.data) {
-            const inv = invRes.data;
-            setInvoiceDate(inv.date_emission);
-            setRefPf(inv.ref_pf || "");
-            setDateContrat(inv.date_contrat || "");
-            setTypeDocument(inv.type_document || "FACTURE");
-            setAcompteRegle(inv.acompte_regle || 0);
-            setPaymentMethods([inv.payment_method]);
-            setSignatureCompany(inv.signature_company || "");
-            setSignatureClient(inv.signature_client || "");
-
-            const clientMatch = loadedClients.find(
-              (c) => c.id === inv.client_id,
-            );
-            if (clientMatch) setSelectedClient(clientMatch);
+          const { invoice, lines: loadedLines } = await invoicesApi.get(invoiceId);
+          setInvoiceDate(invoice.date_emission);
+          setRefPf(invoice.ref_pf || "");
+          setDateContrat(invoice.date_contrat || "");
+          if (["FACTURE", "PRO-FORMA", "AVOIR"].includes(invoice.type_document)) {
+            setTypeDocument(invoice.type_document as "FACTURE" | "PRO-FORMA" | "AVOIR");
           }
+          setAcompteRegle(Number(invoice.acompte_regle || 0));
+          setPaymentMethods(invoice.payment_method ? [invoice.payment_method] : []);
+          setSignatureCompany(invoice.signature_company || "");
+          setSignatureClient(invoice.signature_client || "");
 
-          setLines((linesRes.data || []) as InvoiceLine[]);
+          const clientMatch = loadedClients.find((c) => c.id === invoice.client_id);
+          if (clientMatch) setSelectedClient(clientMatch);
+          setLines(
+            loadedLines.map((line) => ({
+              ...line,
+              unite: line.unite === null ? null : Number(line.unite),
+              taux: line.taux === null ? null : Number(line.taux),
+              montant: Number(line.montant),
+              comments: line.comments ?? "",
+            })),
+          );
         } else {
           setLines([
             {
@@ -206,101 +207,57 @@ export default function InvoiceFormPage() {
     setError(null);
 
     try {
-      const invoiceDateObj = new Date(invoiceDate);
-      const month = invoiceDateObj.getMonth() + 1;
       const initials = (
         profile?.initials ||
         buildUserInitials(firstName, lastName) ||
         "XX"
       ).toUpperCase();
-      const invoiceNumber = invoiceId
-        ? undefined
-        : `EXCIMAA/FAC${String(month).padStart(2, "0")}/${initials || "XX"}/${String(
-            await getNextInvoiceSequence(initials || "XX", month),
-          ).padStart(7, "0")}`;
+      const referenceBase = generateRefPF(firstName, lastName, invoiceDate);
 
-      const invoiceData: any = {
-        ...(invoiceNumber && { invoice_number: invoiceNumber }),
+      const invoiceData = {
         date_emission: invoiceDate,
         client_id: selectedClient.id,
-        client_details_snapshot: {
-          name: selectedClient.name,
-          address_bp: selectedClient.address_bp,
-          nui: selectedClient.nui,
-          rccm: selectedClient.rccm,
-          contract_ref: selectedClient.contract_ref,
-        },
         currency: selectedCountry.currency,
         country: selectedCountry.code,
-        ref_pf: refPf,
         date_contrat: dateContrat || null,
-        type_document: typeDocument, // 👈 UN SEUL CHAMP
-        total_ht: totals.totalHT,
-        total_tva: totals.tva,
-        total_ttc: totals.totalTTC,
-        total_retenues: totals.totalRetenues,
-        total_debours: totals.totalDebours,
-        total_general: totals.totalGeneral,
+        type_document: typeDocument,
         acompte_regle: acompteRegle,
         payment_method: paymentMethods[0] || "virement",
         signature_company: signatureCompany,
         signature_client: signatureClient,
-        status: "draft",
-        created_by: user.id,
+        initials: initials || "XX",
+        reference_base: referenceBase,
+        lines: lines.map(({ section, designation, unite, taux, sort_order, comments }) => ({
+          section,
+          designation,
+          unite,
+          taux,
+          sort_order,
+          comments: comments ?? null,
+        })),
       };
 
       if (invoiceId) {
-        const { error: updateError } = await supabase
-          .from("invoices")
-          .update(invoiceData)
-          .eq("id", invoiceId);
-        if (updateError) throw updateError;
-        for (const line of lines) {
-          if (line.id) {
-            const { error: lineError } = await supabase
-              .from("invoice_lines")
-              .update(line)
-              .eq("id", line.id);
-            if (lineError) throw lineError;
-          } else {
-            const { error: insertError } = await supabase
-              .from("invoice_lines")
-              .insert({ ...line, invoice_id: invoiceId });
-            if (insertError) throw insertError;
-          }
-        }
+        await invoicesApi.update(invoiceId, invoiceData);
         void addNotification({
           title: "Facture mise à jour",
           message: `La facture ${invoiceId} a été mise à jour.`,
           type: "invoice",
         });
       } else {
-        const { data: inv, error: insertError } = await supabase
-          .from("invoices")
-          .insert(invoiceData)
-          .select()
-          .maybeSingle();
-        if (insertError) throw insertError;
-        if (inv) {
-          for (const line of lines) {
-            const { error: lineError } = await supabase
-              .from("invoice_lines")
-              .insert({ ...line, invoice_id: inv.id });
-            if (lineError) throw lineError;
-          }
-          void addNotification({
-            title: "Nouvelle facture créée",
-            message: `La ${typeDocument === "AVOIR" ? "avoir" : typeDocument === "PRO-FORMA" ? "pro‑forma" : "facture"} ${inv.invoice_number || inv.ref_pf || "a été créée"} a été enregistrée.`,
-            type: "invoice",
-          });
-        }
+        const created = await invoicesApi.create(invoiceData);
+        void addNotification({
+          title: "Nouvelle facture créée",
+          message: `La ${typeDocument === "AVOIR" ? "avoir" : typeDocument === "PRO-FORMA" ? "pro‑forma" : "facture"} ${created.invoice.invoice_number || created.invoice.ref_pf || "a été créée"} a été enregistrée.`,
+          type: "invoice",
+        });
       }
 
       setSaving(false);
       navigate("/factures");
-    } catch (err: any) {
+    } catch (err) {
       console.error("Erreur lors de l'enregistrement:", err);
-      setError(err.message || "Erreur lors de l'enregistrement de la facture");
+      setError(err instanceof Error ? err.message : "Erreur lors de l'enregistrement de la facture");
       setSaving(false);
     }
   };

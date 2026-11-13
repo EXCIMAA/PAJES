@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import date
+import uuid
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import MetaData, Table, and_, case, func, inspect, select
+from sqlalchemy import MetaData, Table, Uuid, and_, case, func, inspect, or_, select
 from sqlalchemy.orm import Session
 
 TABLE_CANDIDATES = {
@@ -18,7 +19,13 @@ TABLE_CANDIDATES = {
     "fixed_assets": ("fixed_assets",),
     "employees": ("collaborateurs", "team_members"),
     "timesheets": ("time_entries", "timesheets"),
+    "missions": ("weekly_missions",),
+    "review_notes": ("review_notes",),
+    "findings": ("findings",),
+    "expense_reports": ("expense_reports",),
+    "notifications": ("notifications",),
 }
+EXPENSE_STATUSES = ("submitted", "soumis", "approved", "valide", "paid", "rembourse")
 
 
 class BusinessIntelligenceService:
@@ -84,6 +91,365 @@ class BusinessIntelligenceService:
             "available": True,
             "value": int(self.db.scalar(statement) or 0),
             "source": table.name,
+        }
+
+    def dashboard(self, profile_id: str, allowed_modules: set[str]) -> dict[str, Any]:
+        def unavailable(reason: str) -> dict[str, Any]:
+            return {"available": False, "value": None, "reason": reason}
+
+        def count_metric(
+            entity: str,
+            module: str,
+            *,
+            statuses: tuple[str, ...] | None = None,
+            exclude_statuses: tuple[str, ...] | None = None,
+        ) -> dict[str, Any]:
+            if module not in allowed_modules:
+                return unavailable("Insufficient permission.")
+            table = self._table(entity)
+            if table is None:
+                return unavailable("Source table is unavailable.")
+            statement = select(func.count()).select_from(table)
+            if statuses and "status" in table.c:
+                statement = statement.where(func.lower(table.c.status).in_(statuses))
+            if exclude_statuses and "status" in table.c:
+                statement = statement.where(
+                    or_(
+                        table.c.status.is_(None),
+                        func.lower(table.c.status).not_in(exclude_statuses),
+                    )
+                )
+            return {
+                "available": True,
+                "value": int(self.db.scalar(statement) or 0),
+                "source": table.name,
+            }
+
+        def grouped_chart(
+            entity: str,
+            column_name: str,
+            labels: dict[str, str] | None = None,
+            default_name: str = "unknown",
+        ) -> list[dict[str, Any]]:
+            table = self._table(entity)
+            if table is None or column_name not in table.c:
+                return []
+            rows = self.db.execute(
+                select(table.c[column_name], func.count())
+                .group_by(table.c[column_name])
+                .order_by(table.c[column_name])
+            ).all()
+            return [
+                {
+                    "name": (labels or {}).get(
+                        str(row[0]),
+                        str(row[0] or default_name),
+                    ),
+                    "value": int(row[1]),
+                }
+                for row in rows
+            ]
+
+        metrics = {
+            "active_engagements": count_metric(
+                "missions",
+                "missions",
+                exclude_statuses=(
+                    "termine",
+                    "terminé",
+                    "annule",
+                    "annulé",
+                    "cloture",
+                    "clôturé",
+                    "archive",
+                    "archivé",
+                ),
+            ),
+            "open_review_notes": count_metric(
+                "review_notes", "review_notes", statuses=("open",)
+            ),
+            "open_findings": count_metric(
+                "findings", "findings", statuses=("open", "in_progress")
+            ),
+            "active_clients": count_metric(
+                "clients", "clients", statuses=("active",)
+            ),
+            "open_expenses": count_metric(
+                "expense_reports",
+                "notes_frais",
+                statuses=("soumis", "brouillon"),
+            ),
+        }
+
+        inventory_table = self._table("stock")
+        if "stock" not in allowed_modules:
+            metrics["inventory_value"] = unavailable("Insufficient permission.")
+        elif inventory_table is None or "remaining_value" not in inventory_table.c:
+            metrics["inventory_value"] = unavailable("Inventory value is unavailable.")
+        else:
+            metrics["inventory_value"] = {
+                "available": True,
+                "value": float(
+                    self.db.scalar(
+                        select(func.coalesce(func.sum(inventory_table.c.remaining_value), 0))
+                    )
+                    or 0
+                ),
+                "source": inventory_table.name,
+            }
+
+        assets_table = self._table("fixed_assets")
+        if "immobilisations" not in allowed_modules:
+            metrics["asset_value"] = unavailable("Insufficient permission.")
+        elif assets_table is None or not {
+            "status",
+            "purchase_value",
+            "acquisition_date",
+        }.issubset(assets_table.c.keys()):
+            metrics["asset_value"] = unavailable(
+                "Required fixed-asset valuation fields are unavailable."
+            )
+        else:
+            asset_columns = [
+                assets_table.c[name]
+                for name in (
+                    "status",
+                    "purchase_value",
+                    "useful_life_years",
+                    "useful_life",
+                    "acquisition_date",
+                    "currency",
+                )
+                if name in assets_table.c
+            ]
+            totals: dict[str, float] = {}
+            for row in self.db.execute(select(*asset_columns)).all():
+                values = dict(
+                    zip((column.name for column in asset_columns), row, strict=True)
+                )
+                if str(values["status"]).lower() != "active":
+                    continue
+                purchase = float(values["purchase_value"] or 0)
+                if not purchase:
+                    continue
+                useful_life = float(
+                    values.get("useful_life_years")
+                    or values.get("useful_life")
+                    or 10
+                )
+                acquisition = values["acquisition_date"]
+                if isinstance(acquisition, datetime):
+                    acquisition = acquisition.date()
+                age = max(0, date.today().year - acquisition.year) if acquisition else 0
+                net_book_value = purchase - min(purchase / useful_life * age, purchase)
+                currency = str(values.get("currency") or "Unknown")
+                totals[currency] = totals.get(currency, 0) + net_book_value
+            asset_value = (
+                0
+                if not totals
+                else next(iter(totals.values()))
+                if len(totals) == 1
+                else None
+            )
+            metrics["asset_value"] = {
+                "available": True,
+                "value": asset_value,
+                "by_currency": totals if len(totals) > 1 else None,
+                "source": assets_table.name,
+                **(
+                    {"reason": "Asset values are kept separate by currency."}
+                    if len(totals) > 1
+                    else {}
+                ),
+            }
+
+        mission_chart: list[dict[str, Any]] = []
+        if "missions" in allowed_modules:
+            missions = self._table("missions")
+            if missions is not None and "progress" in missions.c:
+                label_column = next(
+                    (
+                        missions.c[name]
+                        for name in ("client_name", "subject")
+                        if name in missions.c
+                    ),
+                    None,
+                )
+                if label_column is not None:
+                    rows = self.db.execute(
+                        select(label_column, missions.c.progress)
+                        .order_by(missions.c.progress.desc())
+                        .limit(10)
+                    ).all()
+                    mission_chart = [
+                        {
+                            "name": str(row[0] or "Sans nom"),
+                            "value": int(row[1] or 0),
+                        }
+                        for row in rows
+                    ]
+
+        note_labels = {
+            "open": "Ouvert",
+            "in_progress": "En cours",
+            "resolved": "Résolu",
+            "closed": "Fermé",
+            "draft": "Brouillon",
+            "planning": "Planification",
+            "review": "Revue",
+            "completed": "Terminé",
+        }
+        risk_labels = {
+            "critical": "Critique",
+            "high": "Élevé",
+            "medium": "Moyen",
+            "low": "Faible",
+            "significant": "Significatif",
+            "minor": "Mineur",
+        }
+        charts = {
+            "engagements": mission_chart,
+            "review_notes": grouped_chart(
+                "review_notes", "status", note_labels, default_name="open"
+            )
+            if "review_notes" in allowed_modules
+            else [],
+            "findings": grouped_chart(
+                "findings", "risk_level", risk_labels, default_name="medium"
+            )
+            if "findings" in allowed_modules
+            else [],
+        }
+
+        top_clients: list[dict[str, Any]] = []
+        invoices = self._table("invoices")
+        clients = self._table("clients")
+        if (
+            {"factures", "clients"}.issubset(allowed_modules)
+            and invoices is not None
+            and clients is not None
+            and {"client_id", "status"}.issubset(invoices.c.keys())
+            and "id" in clients.c
+        ):
+            amount = next(
+                (
+                    invoices.c[name]
+                    for name in ("total_general", "total_ttc", "total_ht")
+                    if name in invoices.c
+                ),
+                None,
+            )
+            date_column = next(
+                (
+                    invoices.c[name]
+                    for name in ("date_emission", "created_at")
+                    if name in invoices.c
+                ),
+                None,
+            )
+            label_column = next(
+                (
+                    clients.c[name]
+                    for name in ("name", "company", "client_code")
+                    if name in clients.c
+                ),
+                clients.c.id,
+            )
+            if amount is not None:
+                currency = invoices.c.currency if "currency" in invoices.c else None
+                aggregate_columns = [
+                    label_column.label("client"),
+                    func.sum(amount).label("revenue"),
+                    func.count().label("invoice_count"),
+                ]
+                group_columns = [label_column]
+                if currency is not None:
+                    aggregate_columns.append(currency.label("currency"))
+                    group_columns.append(currency)
+                if date_column is not None:
+                    aggregate_columns.append(func.max(date_column).label("last_invoice"))
+                statement = (
+                    select(*aggregate_columns)
+                    .select_from(
+                        clients.join(invoices, clients.c.id == invoices.c.client_id)
+                    )
+                    .where(
+                        or_(
+                            invoices.c.status.is_(None),
+                            func.lower(invoices.c.status) != "cancelled",
+                        )
+                    )
+                )
+                if "archived" in invoices.c:
+                    statement = statement.where(
+                        or_(
+                            invoices.c.archived.is_(False),
+                            invoices.c.archived.is_(None),
+                        )
+                    )
+                rows = self.db.execute(
+                    statement.group_by(*group_columns)
+                    .order_by(func.sum(amount).desc())
+                    .limit(10)
+                ).all()
+                for row in rows:
+                    client_name = str(row.client or "Client inconnu")
+                    currency_value = getattr(row, "currency", None)
+                    if currency_value:
+                        client_name = f"{client_name} ({currency_value})"
+                    last_invoice = getattr(row, "last_invoice", None)
+                    top_clients.append(
+                        {
+                            "clientName": client_name,
+                            "totalRevenue": float(row.revenue or 0),
+                            "invoiceCount": int(row.invoice_count),
+                            "averageInvoice": float(row.revenue or 0)
+                            / int(row.invoice_count),
+                            "lastInvoice": last_invoice.isoformat()
+                            if last_invoice
+                            else "",
+                        }
+                    )
+
+        activities: list[dict[str, Any]] = []
+        notifications = self._table("notifications")
+        if (
+            notifications is not None
+            and {"user_id", "title", "message", "created_at"}.issubset(
+                notifications.c.keys()
+            )
+        ):
+            user_id: Any = profile_id
+            if isinstance(notifications.c.user_id.type, Uuid):
+                user_id = uuid.UUID(profile_id)
+            rows = self.db.execute(
+                select(
+                    notifications.c.id,
+                    notifications.c.title,
+                    notifications.c.message,
+                    notifications.c.created_at,
+                )
+                .where(notifications.c.user_id == user_id)
+                .order_by(notifications.c.created_at.desc())
+                .limit(5)
+            ).all()
+            activities = [
+                {
+                    "id": str(row.id),
+                    "title": str(row.title or "Activité"),
+                    "message": str(row.message or ""),
+                    "date": row.created_at.isoformat() if row.created_at else "",
+                }
+                for row in rows
+            ]
+
+        if "factures" not in allowed_modules or "clients" not in allowed_modules:
+            top_clients = []
+        return {
+            "metrics": metrics,
+            "charts": charts,
+            "top_clients": top_clients,
+            "activities": activities,
         }
 
     def _sum(
@@ -254,7 +620,7 @@ class BusinessIntelligenceService:
             start_date=start_date,
             end_date=end_date,
             date_columns=("created_at", "date"),
-            status_filter=("submitted", "approved", "valide", "paid", "rembourse"),
+            status_filter=EXPENSE_STATUSES,
         )
         clients = self._count("clients", active_only=True)
         engagements = self._count("engagements", active_only=True)
@@ -578,7 +944,7 @@ class BusinessIntelligenceService:
             start_date=start_date,
             end_date=end_date,
             date_columns=("created_at", "date"),
-            status_filter=("submitted", "approved", "valide", "paid", "rembourse"),
+            status_filter=EXPENSE_STATUSES,
         )
 
     def financial(
@@ -784,7 +1150,7 @@ class BusinessIntelligenceService:
             start_date=start_date,
             end_date=end_date,
             date_columns=("created_at", "date"),
-            status_filter=("submitted", "approved", "valide", "paid", "rembourse"),
+            status_filter=EXPENSE_STATUSES,
         )
         if table is None:
             return {"total": total, "categories": [], "available": False}

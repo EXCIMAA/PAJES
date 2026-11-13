@@ -838,18 +838,27 @@
     "signingIn": "Connexion en cours...",
     "signingUp": "Création du compte...",
     "resetSent": "Un lien de réinitialisation a été envoyé à votre adresse e-mail.",
-    "resetEmailSent": "Si un compte existe pour cette adresse, un e-mail de réinitialisation a été envoyé. Vérifiez votre boîte de réception et vos spams.",
+    "resetEmailSent": "Si un compte peut être réinitialisé, la demande a été prise en compte.",
+    "signupCreated": "Votre compte a été créé. Vous pouvez maintenant vous connecter.",
+    "activationInstructions": "Si cette adresse peut être activée, des instructions seront communiquées. Vérifiez votre boîte de réception avant de réessayer.",
     "passwordStrength": "Utilisez au moins 8 caractères avec des lettres, chiffres et symboles.",
     "errors": {
       "emailRequired": "Veuillez saisir votre adresse e-mail.",
       "emailInvalid": "Adresse e-mail invalide.",
       "passwordRequired": "Veuillez saisir votre mot de passe.",
       "passwordMin": "Le mot de passe doit contenir au moins 6 caractères.",
+      "signupPasswordMin": "Le mot de passe doit contenir au moins 8 caractères.",
       "passwordMismatch": "Les mots de passe ne correspondent pas.",
       "fullNameRequired": "Veuillez saisir votre nom complet.",
       "termsRequired": "Veuillez accepter les conditions d'utilisation.",
       "generic": "Une erreur est survenue. Veuillez réessayer.",
-      "invalidCredentials": "E-mail ou mot de passe incorrect."
+      "invalidCredentials": "E-mail ou mot de passe incorrect.",
+      "signupTimeout": "La demande a dépassé le délai. Vérifiez si un compte a été créé avant de réessayer ; ne soumettez pas à nouveau tant que son état n'est pas confirmé.",
+      "signupNetwork": "Le serveur d'inscription est injoignable. Vérifiez votre connexion avant de réessayer.",
+      "signupDuplicate": "Un compte existe déjà pour cette adresse. Connectez-vous ou réinitialisez votre mot de passe.",
+      "signupValidation": "Vérifiez l'adresse e-mail, le mot de passe et les champs obligatoires.",
+      "signupUnavailable": "L'inscription est temporairement indisponible. Contactez l'administrateur avant de réessayer.",
+      "signupFailed": "L'inscription n'a pas pu aboutir. Vérifiez l'état du compte ou contactez l'administrateur avant de réessayer."
     }
   },
   "noteDeFrais": {

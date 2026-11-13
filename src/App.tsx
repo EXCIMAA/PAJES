@@ -12,6 +12,7 @@ import { AppLayout } from "./components/layout/AppLayout";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { RoleGuard } from "./components/auth/RoleGuard";
 import { AuthPage } from "./pages/auth/AuthPage";
+import { ActivateAccountPage } from "./pages/auth/ActivateAccountPage";
 import { ResetPasswordPage } from "./pages/auth/ResetPasswordPage";
 import { PendingApprovalPage } from "./pages/PendingApprovalPage";
 import { DemoProvider } from "./contexts/DemoContext";
@@ -189,6 +190,10 @@ function App() {
             element={<Navigate to="/login?tab=signup" replace />}
           />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route
+            path="/activate-account"
+            element={<ActivateAccountPage />}
+          />
 
           {/* Pending approval */}
           <Route

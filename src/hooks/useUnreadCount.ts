@@ -1,104 +1,43 @@
-// src/hooks/useUnreadCount.ts
 import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { notificationsApi } from "../api/notifications";
 import { useAuth } from "../contexts/AuthContext";
 
+const REFRESH_INTERVAL_MS = 30_000;
+
 export function useUnreadCount() {
-  const { user } = useAuth();
+  const { user, isDemo } = useAuth();
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Pas d'utilisateur → rien à faire
-    if (!user?.id) {
+    if (!user?.id || isDemo) {
       setCount(0);
       setLoading(false);
       return;
     }
 
-    let isMounted = true;
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-
-    // ============================================================
-    // Compter les notifications non lues
-    // ============================================================
+    let active = true;
     const fetchCount = async () => {
-      const { count: c } = await supabase
-        .from("notifications")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id)
-        .eq("read", false);
-
-      if (isMounted) {
-        setCount(c || 0);
-        setLoading(false);
-      }
-    };
-
-    // ============================================================
-    // Init : 1 seule fois par user
-    // ============================================================
-    const init = async () => {
-      // 1. Charger le count initial
-      await fetchCount();
-
-      // 2. Supprimer TOUT channel existant (sécurité)
-      const channelName = `notifications_count_${user.id}`;
-      const existingChannels = supabase.getChannels();
-      for (const existing of existingChannels) {
-        if (existing.topic === `realtime:${channelName}`) {
-          await supabase.removeChannel(existing);
+      try {
+        const unreadCount = await notificationsApi.unreadCount();
+        if (active) setCount(unreadCount);
+      } catch (error) {
+        if (active) {
+          console.error("Erreur chargement compteur notifications:", error);
         }
+      } finally {
+        if (active) setLoading(false);
       }
-
-      if (!isMounted) return;
-
-      // 3. Créer UN SEUL channel, chaîner TOUS les .on(), PUIS subscribe
-      channel = supabase
-        .channel(channelName)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "notifications",
-            filter: `user_id=eq.${user.id}`,
-          },
-          () => {
-            void fetchCount();
-          },
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "notifications",
-            filter: `user_id=eq.${user.id}`,
-          },
-          () => {
-            void fetchCount();
-          },
-        )
-        .subscribe((status) => {
-          if (status === "SUBSCRIBED") {
-            console.log(`📡 Realtime connecté : ${channelName}`);
-          }
-        });
     };
 
-    void init();
+    void fetchCount();
+    const intervalId = window.setInterval(() => void fetchCount(), REFRESH_INTERVAL_MS);
 
-    // ============================================================
-    // Cleanup
-    // ============================================================
     return () => {
-      isMounted = false;
-      if (channel) {
-        void supabase.removeChannel(channel);
-      }
+      active = false;
+      window.clearInterval(intervalId);
     };
-  }, [user?.id]);
+  }, [isDemo, user?.id]);
 
   return { count, loading };
 }

@@ -1,10 +1,12 @@
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import { useDatabase } from '../../contexts/DatabaseContext';
+import { useAuth } from '../../contexts/AuthContext';
 
 export function DatabaseBanner() {
   const { connected, checking, error, recheck } = useDatabase();
+  const { isDemo } = useAuth();
 
-  if (checking || connected) return null;
+  if (isDemo || checking || connected) return null;
 
   return (
     <div className="bg-error-500/10 border-b border-error-500/25 px-4 py-2 flex items-center justify-center gap-3 text-sm text-error-500">

@@ -1,8 +1,8 @@
 // src/pages/Fournisseurs/FournisseursPage.tsx
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
 import { addNotification } from "../../lib/notifications";
+import { suppliersApi, type Supplier } from "../../api/suppliers";
 import { format, differenceInDays } from "date-fns";
 import {
   Truck,
@@ -296,8 +296,9 @@ const RecurringBadge = styled.span`
 
 // ========== COMPOSANT PRINCIPAL ==========
 export const FournisseursPage: React.FC = () => {
-  const [fournisseurs, setFournisseurs] = useState<any[]>([]);
+  const [fournisseurs, setFournisseurs] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -313,23 +314,21 @@ export const FournisseursPage: React.FC = () => {
   const loadFournisseurs = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("fournisseurs")
-        .select("*")
-        .order("name", { ascending: true });
-      if (error) throw error;
-      setFournisseurs(data || []);
+      const data = await suppliersApi.list();
+      setFournisseurs(data);
+      setError(null);
       // Vérifier les alertes
-      await checkAlerts(data || []);
+      await checkAlerts(data);
     } catch (err) {
       console.error(err);
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
     } finally {
       setLoading(false);
     }
   };
 
   // ========== ALERTE PERSISTANTE (chaque jour jusqu'à résolution) ==========
-  const checkAlerts = async (items: any[]) => {
+  const checkAlerts = async (items: Supplier[]) => {
     const today = new Date();
     const todayStr = today.toISOString().split("T")[0];
 
@@ -387,10 +386,7 @@ export const FournisseursPage: React.FC = () => {
         });
 
         // Mettre à jour last_alert_date pour éviter les doublons du même jour
-        await supabase
-          .from("fournisseurs")
-          .update({ last_alert_date: todayStr })
-          .eq("id", f.id);
+        await suppliersApi.patch(f.id, { last_alert_date: todayStr });
       }
     }
   };
@@ -398,9 +394,7 @@ export const FournisseursPage: React.FC = () => {
   useEffect(() => {
     loadFournisseurs();
     // Vérifier les alertes toutes les 60 secondes (optionnel)
-    const interval = setInterval(() => {
-      loadFournisseurs();
-    }, 60000);
+    const interval = setInterval(() => void loadFournisseurs(), 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -408,7 +402,7 @@ export const FournisseursPage: React.FC = () => {
   const totalFournisseurs = fournisseurs.length;
   const alertesActives = fournisseurs.filter((f) => !f.is_done).length;
   const totalDepenses = fournisseurs.reduce(
-    (acc, f) => acc + (f.total_depenses || 0),
+    (acc, f) => acc + Number(f.total_depenses || 0),
     0,
   );
   const moyenneDepenses =
@@ -416,13 +410,13 @@ export const FournisseursPage: React.FC = () => {
 
   // Données pour le graphique
   const chartData = fournisseurs
-    .filter((f) => f.total_depenses > 0)
+    .filter((f) => Number(f.total_depenses || 0) > 0)
     .map((f) => ({
       name: f.name.length > 15 ? f.name.slice(0, 15) + "..." : f.name,
-      dépenses: f.total_depenses || 0,
+      dépenses: Number(f.total_depenses || 0),
     }));
 
-  const handleOpenModal = (fournisseur?: any) => {
+  const handleOpenModal = (fournisseur?: Supplier) => {
     if (fournisseur) {
       setEditingId(fournisseur.id);
       setForm({
@@ -433,7 +427,7 @@ export const FournisseursPage: React.FC = () => {
         recurring_day: fournisseur.recurring_day?.toString() || "",
         is_recurring: fournisseur.is_recurring || false,
         message: fournisseur.message || "",
-        total_depenses: fournisseur.total_depenses?.toString() || "",
+        total_depenses: String(fournisseur.total_depenses || ""),
       });
     } else {
       setEditingId(null);
@@ -491,27 +485,21 @@ export const FournisseursPage: React.FC = () => {
       const payload = {
         name: form.name,
         message: form.message || "",
-        total_depenses: parseFloat(form.total_depenses) || 0,
+        total_depenses: form.total_depenses.trim() || "0",
         is_recurring: form.is_recurring,
         recurring_day: form.is_recurring ? parseInt(form.recurring_day) : null,
         alert_date: !form.is_recurring ? form.alert_date : null,
-        last_alert_date: null, // on réinitialise pour permettre la nouvelle alerte
       };
 
       if (editingId) {
-        const { error } = await supabase
-          .from("fournisseurs")
-          .update(payload)
-          .eq("id", editingId);
-        if (error) throw error;
+        await suppliersApi.update(editingId, payload);
         void addNotification({
           title: "Fournisseur modifié",
           message: `${form.name} a été mis à jour.`,
           type: "success",
         });
       } else {
-        const { error } = await supabase.from("fournisseurs").insert([payload]);
-        if (error) throw error;
+        await suppliersApi.create(payload);
         void addNotification({
           title: "Fournisseur ajouté",
           message: `${form.name} a été ajouté.`,
@@ -520,45 +508,37 @@ export const FournisseursPage: React.FC = () => {
       }
       handleCloseModal();
       await loadFournisseurs();
-    } catch (err: any) {
-      alert("Erreur : " + err.message);
+    } catch (err) {
+      alert("Erreur : " + (err instanceof Error ? err.message : "Erreur inconnue"));
     }
   };
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Supprimer ce fournisseur ?")) return;
     try {
-      const { error } = await supabase
-        .from("fournisseurs")
-        .delete()
-        .eq("id", id);
-      if (error) throw error;
+      await suppliersApi.delete(id);
       await loadFournisseurs();
       void addNotification({
         title: "Fournisseur supprimé",
         message: "Le fournisseur a été supprimé.",
         type: "warning",
       });
-    } catch (err: any) {
-      alert("Erreur : " + err.message);
+    } catch (err) {
+      alert("Erreur : " + (err instanceof Error ? err.message : "Erreur inconnue"));
     }
   };
 
   const handleMarkDone = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from("fournisseurs")
-        .update({ is_done: true, last_alert_date: null })
-        .eq("id", id);
-      if (error) throw error;
+      await suppliersApi.patch(id, { is_done: true, last_alert_date: null });
       await loadFournisseurs();
       void addNotification({
         title: "Alerte terminée",
         message: "L'alerte a été marquée comme terminée.",
         type: "success",
       });
-    } catch (err: any) {
-      alert("Erreur : " + err.message);
+    } catch (err) {
+      alert("Erreur : " + (err instanceof Error ? err.message : "Erreur inconnue"));
     }
   };
 
@@ -576,6 +556,24 @@ export const FournisseursPage: React.FC = () => {
           </Button>
         </ProtectedAction>
       </Header>
+
+      {error && (
+        <div
+          role="alert"
+          style={{
+            marginBottom: "16px",
+            padding: "12px",
+            borderRadius: "8px",
+            background: "rgba(220,38,38,0.15)",
+            color: "#fca5a5",
+          }}
+        >
+          Erreur de chargement : {error}
+          <Button variant="secondary" onClick={() => void loadFournisseurs()}>
+            <RefreshCw size={14} /> Réessayer
+          </Button>
+        </div>
+      )}
 
       {/* Dashboard */}
       <StatsGrid>
@@ -709,7 +707,9 @@ export const FournisseursPage: React.FC = () => {
                     </td>
                     <td>{alertDisplay}</td>
                     <td>{f.message || "-"}</td>
-                    <td>{f.total_depenses?.toLocaleString() || 0} FCFA</td>
+                    <td>
+                      {Number(f.total_depenses || 0).toLocaleString()} FCFA
+                    </td>
                     <td>
                       <StatusBadge active={isActive}>
                         {isActive

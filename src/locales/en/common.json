@@ -921,18 +921,27 @@
     "signingIn": "Signing in...",
     "signingUp": "Creating account...",
     "resetSent": "A password reset link has been sent to your email address.",
-    "resetEmailSent": "If an account exists for this address, a reset email has been sent. Check your inbox and spam folder.",
+    "resetEmailSent": "If an account can be reset, the request has been accepted.",
+    "signupCreated": "Your account has been created. You can now sign in.",
+    "activationInstructions": "If this address can be activated, instructions will be provided. Check your inbox before trying again.",
     "passwordStrength": "Use at least 8 characters with letters, numbers, and symbols.",
     "errors": {
       "emailRequired": "Please enter your email address.",
       "emailInvalid": "Email address is invalid.",
       "passwordRequired": "Please enter your password.",
       "passwordMin": "Password must be at least 6 characters long.",
+      "signupPasswordMin": "Password must be at least 8 characters long.",
       "passwordMismatch": "Passwords do not match.",
       "fullNameRequired": "Please enter your full name.",
       "termsRequired": "Please accept the terms of use.",
       "generic": "An error occurred. Please try again.",
-      "invalidCredentials": "Email or password is incorrect."
+      "invalidCredentials": "Email or password is incorrect.",
+      "signupTimeout": "The request timed out. Check whether an account was created before trying again; do not resubmit until its status is confirmed.",
+      "signupNetwork": "The signup server could not be reached. Check your connection before trying again.",
+      "signupDuplicate": "An account already exists for this address. Sign in or reset your password.",
+      "signupValidation": "Check the email address, password, and required fields.",
+      "signupUnavailable": "Signup is temporarily unavailable. Contact the administrator before trying again.",
+      "signupFailed": "Signup could not be completed. Check the account status or contact the administrator before trying again."
     }
   },
   "noteDeFrais": {

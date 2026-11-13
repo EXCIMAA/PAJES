@@ -2,10 +2,13 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Check, Eye, EyeOff, Hexagon, Lock } from "lucide-react";
-import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../contexts/AuthContext";
+import { clearAuthLinkToken, getAuthLinkToken } from "../../lib/authLink";
 
 export function ResetPasswordPage() {
   const navigate = useNavigate();
+  const [token] = useState(getAuthLinkToken);
+  const { confirmPasswordReset } = useAuth();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -15,26 +18,22 @@ export function ResetPasswordPage() {
   const [success, setSuccess] = useState(false);
   const [checking, setChecking] = useState(true);
 
-  // Vérifier que l'utilisateur vient bien d'un lien de reset
   useEffect(() => {
-    const check = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!data?.session) {
-        setError(
-          "Lien invalide ou expiré. Refaites une demande depuis la page de connexion.",
-        );
-      }
-      setChecking(false);
-    };
-    check();
-  }, []);
+    clearAuthLinkToken();
+    if (!token) {
+      setError(
+        "Lien invalide ou expiré. Refaites une demande depuis la page de connexion.",
+      );
+    }
+    setChecking(false);
+  }, [token]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
 
-    if (password.length < 6) {
-      setError("Le mot de passe doit contenir au moins 6 caractères.");
+    if (password.length < 8) {
+      setError("Le mot de passe doit contenir au moins 8 caractères.");
       return;
     }
     if (password !== confirmPassword) {
@@ -44,17 +43,19 @@ export function ResetPasswordPage() {
 
     setLoading(true);
     try {
-      const { error: updateError } = await supabase.auth.updateUser({
-        password,
-      });
-      if (updateError) {
-        setError(updateError.message);
+      if (!token) {
+        setError(
+          "Lien invalide ou expiré. Refaites une demande depuis la page de connexion.",
+        );
+        return;
+      }
+      const result = await confirmPasswordReset(token, password);
+      if (result.error) {
+        setError(result.error);
         return;
       }
       setSuccess(true);
-      // Déconnexion pour forcer une reconnexion propre
-      setTimeout(async () => {
-        await supabase.auth.signOut();
+      window.setTimeout(() => {
         navigate("/login", { replace: true });
       }, 2500);
     } finally {
@@ -205,7 +206,7 @@ export function ResetPasswordPage() {
 
                   <button
                     type="submit"
-                    disabled={loading}
+                    disabled={loading || !token}
                     className="w-full py-2.5 px-4 rounded-lg bg-royal-600 text-white text-sm font-medium hover:bg-royal-700 focus:outline-none focus:ring-2 focus:ring-royal-500 focus:ring-offset-2 disabled:opacity-50 transition-colors"
                   >
                     {loading

@@ -5,7 +5,8 @@ is set; mutating requests (POST/PUT/PATCH/DELETE) must include the same
 token in a header. Bearer-token auth (no cookie) is exempt since browsers
 don't auto-send Authorization headers.
 
-Login and signup are exempt because the user has no session yet.
+The double-submit token also protects unauthenticated auth endpoints, including
+login, signup, activation, and password recovery.
 """
 
 from __future__ import annotations
@@ -19,12 +20,6 @@ from starlette.responses import Response
 
 from app.core.config import settings
 
-EXEMPT_PATHS = {
-    "/api/v1/auth/login",
-    "/api/v1/auth/signup",
-    "/api/v1/auth/reset-password",
-    "/api/v1/auth/reset-password/confirm",
-}
 MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 
@@ -33,31 +28,24 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         # Always set a CSRF cookie on GET requests so the client has a token
         if request.method == "GET":
             response: Response = await call_next(request)
-            if not request.cookies.get(settings.csrf_cookie_name):
+            token = request.cookies.get(settings.csrf_cookie_name)
+            if not token:
+                token = secrets.token_hex(32)
                 response.set_cookie(
                     key=settings.csrf_cookie_name,
-                    value=secrets.token_hex(32),
+                    value=token,
                     httponly=False,  # Must be readable by JS
-                    secure=settings.secure_cookies,
+                    secure=settings.secure_auth_cookies,
                     samesite="lax",
                     path="/",
                 )
+            response.headers[settings.csrf_header_name] = token
             return response
 
         if not settings.csrf_enabled:
             return await call_next(request)
 
         if request.method not in MUTATING_METHODS:
-            return await call_next(request)
-
-        path = request.url.path
-        if path in EXEMPT_PATHS:
-            return await call_next(request)
-
-        # If auth is via Bearer header (no session cookie), CSRF doesn't apply
-        auth_header = request.headers.get("Authorization", "")
-        has_cookie = bool(request.cookies.get(settings.auth_cookie_name))
-        if auth_header.startswith("Bearer ") and not has_cookie:
             return await call_next(request)
 
         # Double-submit: cookie token must match header token

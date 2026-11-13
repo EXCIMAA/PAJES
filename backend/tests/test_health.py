@@ -10,6 +10,9 @@ from __future__ import annotations
 import os
 
 import pytest
+from sqlalchemy.exc import OperationalError
+
+from app.database import get_db
 
 NO_DB = os.environ.get("PAJES_ENV_NO_DB", "0") == "1"
 
@@ -25,6 +28,31 @@ def test_liveness_ok(client_no_db):
 def test_liveness_has_app_name(client_no_db):
     r = client_no_db.get("/api/v1/health")
     assert r.json()["app"]
+
+
+def test_readiness_returns_service_unavailable_without_database_details(client_no_db):
+    class UnavailableDatabase:
+        def execute(self, _statement):
+            raise OperationalError("SELECT 1", {}, Exception("sensitive connection detail"))
+
+    def override_get_db():
+        yield UnavailableDatabase()
+
+    from app.main import api_app
+
+    api_app.dependency_overrides[get_db] = override_get_db
+    try:
+        response = client_no_db.get("/api/v1/health/ready")
+    finally:
+        api_app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "degraded",
+        "db": {"ok": False, "detail": "database unavailable"},
+        "code": 503,
+    }
+    assert "sensitive connection detail" not in response.text
 
 
 @pytest.mark.skipif(NO_DB, reason="no database configured in this environment")

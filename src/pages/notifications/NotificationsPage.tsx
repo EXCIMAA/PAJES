@@ -1,6 +1,6 @@
 // src/pages/notifications/NotificationsPage.tsx
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Bell,
   CheckCircle2,
@@ -19,8 +19,11 @@ import {
 } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { cn, formatRelativeTime } from "../../lib/utils";
-import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../contexts/AuthContext";
+import { notificationsApi } from "../../api/notifications";
 import type { Notification } from "../../types";
+
+const REFRESH_INTERVAL_MS = 30_000;
 
 // ==================== ICÔNES ET COULEURS ====================
 
@@ -82,145 +85,76 @@ const typeLabels: Record<string, string> = {
 // ==================== COMPOSANT ====================
 
 export function NotificationsPage() {
+  const { user, isDemo } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState("all");
 
-  const fetchNotifications = async () => {
-    try {
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData?.user?.id;
-      if (!userId) {
-        setNotifications([]);
-        setLoading(false);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("notifications")
-        .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setNotifications(data || []);
+  const fetchNotifications = useCallback(async (showLoading = false) => {
+    if (!user?.id || isDemo) {
+      setNotifications([]);
+      setLoading(false);
       setError(null);
-    } catch (err: any) {
+      return;
+    }
+
+    if (showLoading) setLoading(true);
+    try {
+      const data = await notificationsApi.list();
+      setNotifications(data);
+      setError(null);
+    } catch (err: unknown) {
       console.error("Erreur chargement notifications:", err);
-      setError(err.message);
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
     } finally {
       setLoading(false);
     }
-  };
+  }, [isDemo, user?.id]);
 
-  // === SOUSCRIPTION EN TEMPS RÉEL ===
   useEffect(() => {
-    let channel: any;
-    let mounted = true;
-
-    const init = async () => {
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData?.user?.id;
-      if (!userId) {
-        setNotifications([]);
-        setLoading(false);
-        return;
-      }
-
-      await fetchNotifications();
-
-      // 1. Créer le canal
-      // 2. Ajouter les listeners (.on)
-      // 3. Appeler .subscribe() ENFIN
-      channel = supabase
-        .channel("notifications_changes")
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "notifications",
-            filter: `user_id=eq.${userId}`,
-          },
-          (payload) => {
-            if (!mounted) return;
-            const newNotif = payload.new as Notification;
-            setNotifications((prev) => [newNotif, ...prev]);
-          },
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "notifications",
-            filter: `user_id=eq.${userId}`,
-          },
-          (payload) => {
-            if (!mounted) return;
-            const updated = payload.new as Notification;
-            setNotifications((prev) =>
-              prev.map((n) => (n.id === updated.id ? updated : n)),
-            );
-          },
-        )
-        .subscribe();
-    };
-
-    init();
+    void fetchNotifications(true);
+    const intervalId = window.setInterval(
+      () => void fetchNotifications(),
+      REFRESH_INTERVAL_MS,
+    );
 
     return () => {
-      mounted = false;
-      if (channel) supabase.removeChannel(channel);
+      window.clearInterval(intervalId);
     };
-  }, []);
+  }, [fetchNotifications]);
 
   // ===== GESTIONNAIRES =====
   const markRead = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from("notifications")
-        .update({ read: true })
-        .eq("id", id);
-      if (error) throw error;
+      const updated = await notificationsApi.markRead(id);
       setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
+        prev.map((n) => (n.id === id ? updated : n)),
       );
     } catch (err) {
       console.error("Erreur marquage lu:", err);
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
     }
   };
 
   const markAllRead = async () => {
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData?.user?.id;
-      if (!userId) return;
-
-      const { error } = await supabase
-        .from("notifications")
-        .update({ read: true })
-        .eq("user_id", userId)
-        .eq("read", false);
-      if (error) throw error;
+      await notificationsApi.markAllRead();
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     } catch (err) {
       console.error("Erreur tout marquer lu:", err);
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
     }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Supprimer cette notification ?")) return;
     try {
-      const { error } = await supabase
-        .from("notifications")
-        .delete()
-        .eq("id", id);
-      if (error) throw error;
+      await notificationsApi.delete(id);
       setNotifications((prev) => prev.filter((n) => n.id !== id));
     } catch (err) {
       console.error("Erreur suppression:", err);
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
     }
   };
 
@@ -242,7 +176,7 @@ export function NotificationsPage() {
       <div className="card p-8 text-center">
         <p className="text-sm text-error-500">Erreur : {error}</p>
         <button
-          onClick={fetchNotifications}
+          onClick={() => void fetchNotifications(true)}
           className="btn-secondary btn-sm mt-4"
         >
           Réessayer

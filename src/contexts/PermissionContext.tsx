@@ -7,9 +7,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { supabase } from "../lib/supabase";
+import { useAuth } from "./AuthContext";
+import { permissionsApi } from "../api/permissions";
 import {
   buildDisplayedPermissionsMap,
+  emptyRolePermissions,
   setRuntimePermissionMatrix,
   validateEnforcementAgainstTeamPage,
   type PermissionMatrix,
@@ -18,20 +20,24 @@ import {
 interface PermissionContextValue {
   matrix: PermissionMatrix;
   loading: boolean;
+  error: string | null;
   reload: () => Promise<void>;
 }
 
 const PermissionContext = createContext<PermissionContextValue>({
   matrix: buildDisplayedPermissionsMap([]),
   loading: true,
+  error: null,
   reload: async () => {},
 });
 
 export function PermissionProvider({ children }: { children: ReactNode }) {
+  const { user, loading: authLoading, isDemo } = useAuth();
   const [matrix, setMatrix] = useState<PermissionMatrix>(() =>
     buildDisplayedPermissionsMap([]),
   );
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const apply = useCallback((next: PermissionMatrix) => {
     setRuntimePermissionMatrix(next);
@@ -46,33 +52,61 @@ export function PermissionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const reload = useCallback(async () => {
+    if (authLoading) return;
     setLoading(true);
-    const { data, error } = await supabase
-      .from("role_permissions")
-      .select("role, permissions");
+    setError(null);
 
-    if (error) {
-      console.error("[PermissionContext] load failed:", error.message);
+    if (isDemo || !user) {
       apply(buildDisplayedPermissionsMap([]));
       setLoading(false);
       return;
     }
 
-    apply(buildDisplayedPermissionsMap(data || []));
-    setLoading(false);
-  }, [apply]);
+    try {
+      if (user.role === "super_admin") {
+        const response = await permissionsApi.matrix();
+        const rows = Object.entries(response.matrix).map(([role, permissions]) => ({
+          role,
+          permissions,
+        }));
+        apply(buildDisplayedPermissionsMap(rows));
+      } else {
+        const response = await permissionsApi.currentRole();
+        apply(
+          buildDisplayedPermissionsMap(
+            response.role
+              ? [{ role: response.role, permissions: response.permissions }]
+              : [],
+          ),
+        );
+      }
+    } catch (loadError) {
+      const message =
+        loadError instanceof Error
+          ? loadError.message
+          : "Impossible de charger les permissions.";
+      console.error("[PermissionContext] Échec du chargement des permissions.", loadError);
+      setError(message);
+      const denied = buildDisplayedPermissionsMap(
+        user.role
+          ? [{ role: user.role, permissions: emptyRolePermissions() }]
+          : [],
+      );
+      apply(denied);
+    } finally {
+      setLoading(false);
+    }
+  }, [apply, authLoading, isDemo, user]);
 
   useEffect(() => {
-    const defaults = buildDisplayedPermissionsMap([]);
-    setRuntimePermissionMatrix(defaults);
-    setMatrix(defaults);
-    void reload();
-    return () => setRuntimePermissionMatrix(null);
-  }, [reload]);
+    if (!authLoading) void reload();
+  }, [authLoading, reload]);
+
+  useEffect(() => () => setRuntimePermissionMatrix(null), []);
 
   const value = useMemo(
-    () => ({ matrix, loading, reload }),
-    [matrix, loading, reload],
+    () => ({ matrix, loading, error, reload }),
+    [matrix, loading, error, reload],
   );
 
   return (

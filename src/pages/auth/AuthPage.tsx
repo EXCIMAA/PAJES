@@ -1,5 +1,5 @@
 // src/pages/auth/AuthPage.tsx
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Check, Eye, EyeOff, Hexagon } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -25,6 +25,7 @@ export function AuthPage() {
     session,
     isDemo,
     loading: authLoading,
+    authError,
   } = useAuth();
 
   const FEATURES = [
@@ -47,16 +48,15 @@ export function AuthPage() {
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [company, setCompany] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const submissionInProgress = useRef(false);
 
   useEffect(() => {
     if (!authLoading && (session || isDemo)) {
@@ -77,25 +77,25 @@ export function AuthPage() {
   }
 
   function resolveError(code: string) {
-    return code;
+    return code.startsWith("auth.errors.") ? t(code) : code;
   }
 
   function validate(): string | null {
     if (!email.trim()) return t("auth.errors.emailRequired");
     if (!isValidEmail(email)) return t("auth.errors.emailInvalid");
-    if (!password) return t("auth.errors.passwordRequired");
-    if (password.length < 6) return t("auth.errors.passwordMin");
     if (mode === "signup") {
       if (!fullName.trim()) return t("auth.errors.fullNameRequired");
-      if (password !== confirmPassword)
-        return t("auth.errors.passwordMismatch");
       if (!acceptTerms) return t("auth.errors.termsRequired");
+    } else {
+      if (!password) return t("auth.errors.passwordRequired");
+      if (password.length < 6) return t("auth.errors.passwordMin");
     }
     return null;
   }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (submissionInProgress.current) return;
     setError(null);
     setSuccess(null);
 
@@ -105,6 +105,7 @@ export function AuthPage() {
       return;
     }
 
+    submissionInProgress.current = true;
     setLoading(true);
     try {
       if (mode === "signin") {
@@ -115,11 +116,15 @@ export function AuthPage() {
         const parts = fullName.trim().split(/\s+/);
         const firstName = parts[0] ?? "";
         const lastName = parts.slice(1).join(" ") || firstName;
-        const result = await signUp({ email, password, firstName, lastName });
+        const result = await signUp({ email, firstName, lastName });
         if (result.error) setError(resolveError(result.error));
-        else navigate("/", { replace: true });
+        else {
+          setMode("signin");
+          setSuccess(t("auth.activationInstructions"));
+        }
       }
     } finally {
+      submissionInProgress.current = false;
       setLoading(false);
     }
   }
@@ -269,6 +274,11 @@ export function AuthPage() {
                   {error}
                 </div>
               )}
+              {authError && !error && (
+                <div className="mb-4 px-3 py-2 rounded-lg bg-error-50 text-error-600 text-sm border border-error-100">
+                  {authError}
+                </div>
+              )}
               {success && (
                 <div className="mb-4 px-3 py-2 rounded-lg bg-success-50 text-success-700 text-sm border border-success-100">
                   {success}
@@ -336,7 +346,8 @@ export function AuthPage() {
                   />
                 </div>
 
-                <div>
+                {mode === "signin" && (
+                  <div>
                   <label
                     htmlFor="password"
                     className="block text-sm font-medium text-slate-700 mb-1.5"
@@ -350,9 +361,7 @@ export function AuthPage() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="auth-input pr-10"
-                      autoComplete={
-                        mode === "signup" ? "new-password" : "current-password"
-                      }
+                      autoComplete="current-password"
                     />
                     <button
                       type="button"
@@ -366,39 +375,6 @@ export function AuthPage() {
                       )}
                     </button>
                   </div>
-                </div>
-
-                {mode === "signup" && (
-                  <div>
-                    <label
-                      htmlFor="confirmPassword"
-                      className="block text-sm font-medium text-slate-700 mb-1.5"
-                    >
-                      {t("auth.confirmPassword")}
-                    </label>
-                    <div className="relative">
-                      <input
-                        id="confirmPassword"
-                        type={showConfirmPassword ? "text" : "password"}
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="auth-input pr-10"
-                        autoComplete="new-password"
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setShowConfirmPassword(!showConfirmPassword)
-                        }
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                      >
-                        {showConfirmPassword ? (
-                          <EyeOff className="w-4 h-4" />
-                        ) : (
-                          <Eye className="w-4 h-4" />
-                        )}
-                      </button>
-                    </div>
                   </div>
                 )}
 

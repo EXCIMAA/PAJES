@@ -9,27 +9,17 @@ import {
   Eye,
   Trash2,
   Edit2,
-  AlertCircle,
   RefreshCw,
 } from "lucide-react";
-import { supabase } from "../../lib/supabase";
+import { invoicesApi, type InvoiceRecord } from "../../api/invoices";
 import { useAuth } from "../../contexts/AuthContext";
 import { useCountry } from "../../contexts/CountryContext";
 import { INVOICE_STATUS_CONFIG } from "../../lib/constants";
 import { cn, formatDate } from "../../lib/utils";
 import { ProtectedAction } from "../../components/auth/ProtectedAction"; // ✅ ADDED
 
-type Invoice = {
-  id: string;
-  invoice_number: string;
-  ref_pf?: string;
-  date_emission: string;
-  total_general: number;
-  status: string;
-  currency: string;
-  type_document: string;
-  client_details_snapshot?: { name?: string };
-};
+type Invoice = InvoiceRecord;
+const PAGE_SIZE = 100;
 
 const STAT_CARDS = [
   { key: "total", label: "Total" },
@@ -71,7 +61,8 @@ export default function InvoicesPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tableMissing, setTableMissing] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
 
   const userInitials =
     profile?.initials ||
@@ -87,35 +78,23 @@ export default function InvoicesPage() {
 
     setLoading(true);
     setError(null);
-    setTableMissing(false);
 
     try {
-      const { data, error: fetchError } = await supabase
-        .from("invoices")
-        .select(
-          "id, invoice_number, ref_pf, date_emission, total_general, status, currency, type_document, client_details_snapshot",
-        )
-        .eq("archived", false)
-        .eq("country", selectedCountry.code)
-        .order("created_at", { ascending: false });
-
-      if (fetchError) {
-        if (fetchError.message.includes("Could not find the table")) {
-          setTableMissing(true);
-        }
-        setError(fetchError.message);
-        setInvoices([]);
-        return;
-      }
-
-      setInvoices((data || []) as Invoice[]);
+      const result = await invoicesApi.list(
+        selectedCountry.code,
+        PAGE_SIZE,
+        page * PAGE_SIZE,
+      );
+      setInvoices(result.items);
+      setTotal(result.total);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur de chargement");
       setInvoices([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, [selectedCountry.code, user]);
+  }, [page, selectedCountry.code, user]);
 
   useEffect(() => {
     void load();
@@ -156,20 +135,19 @@ export default function InvoicesPage() {
     )
       return;
 
-    const { error: deleteError } = await supabase
-      .from("invoices")
-      .update({ archived: true })
-      .eq("id", id);
-
-    if (deleteError) {
-      alert("Erreur lors de l'archivage : " + deleteError.message);
-    } else {
+    try {
+      await invoicesApi.archive(id);
       await load();
+    } catch (deleteError) {
+      alert(
+        "Erreur lors de l'archivage : " +
+          (deleteError instanceof Error ? deleteError.message : "Erreur inconnue"),
+      );
     }
   };
 
   const formatAmount = (amount: number, currency: string) =>
-    `${new Intl.NumberFormat("fr-FR").format(amount)} ${currency === "XAF" ? "FCFA" : currency}`;
+    `${new Intl.NumberFormat("fr-FR").format(Number(amount))} ${currency === "XAF" ? "FCFA" : currency}`;
 
   const getDocumentLabel = (type: string) => {
     if (type === "PRO-FORMA") return "Pro‑forma";
@@ -203,25 +181,7 @@ export default function InvoicesPage() {
         </ProtectedAction>
       </div>
 
-      {tableMissing && (
-        <div className="card p-4 border-amber-500/30 bg-amber-500/10 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-          <div className="text-sm text-white">
-            <p className="font-medium text-amber-200">
-              Tables factures absentes
-            </p>
-            <p className="text-amber-100/80 mt-1">
-              Exécutez la migration Supabase{" "}
-              <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">
-                20260703180000_003_invoices.sql
-              </code>{" "}
-              dans votre projet Supabase, puis réessayez.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {error && !tableMissing && (
+      {error && (
         <div className="card p-4 border-error-500/30 bg-error-500/10 text-sm text-error-300">
           {error}
         </div>
@@ -325,16 +285,16 @@ export default function InvoicesPage() {
                       </td>
                       <td className="px-4 py-4">
                         <span
-                          className={`text-xs px-2 py-1 rounded-md ${inv.type_document === "AVOIR" ? "bg-amber-700 text-amber-100" : inv.type_document === "PRO-FORMA" ? "bg-blue-700 text-blue-100" : "bg-slate-700 text-white"}`}
+                          className={`text-xs px-2 py-1 rounded-md ${(inv.type_document ?? inv.invoice_type) === "AVOIR" ? "bg-amber-700 text-amber-100" : (inv.type_document ?? inv.invoice_type) === "PRO-FORMA" ? "bg-blue-700 text-blue-100" : "bg-slate-700 text-white"}`}
                         >
-                          {getDocumentLabel(inv.type_document)}
+                          {getDocumentLabel(inv.type_document ?? inv.invoice_type ?? "FACTURE")}
                         </span>
                       </td>
                       <td className="px-4 py-4 text-slate-300">
                         {formatDate(inv.date_emission)}
                       </td>
                       <td className="px-4 py-4 text-right font-semibold text-white">
-                        {formatAmount(inv.total_general, inv.currency)}
+                        {formatAmount(Number(inv.total_general), inv.currency)}
                       </td>
                       <td className="px-4 py-4">
                         <StatusBadge status={inv.status} />
@@ -392,6 +352,32 @@ export default function InvoicesPage() {
           </div>
         )}
       </div>
+
+      {!loading && total > PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm text-slate-300">
+          <span>
+            Page {page + 1} sur {Math.ceil(total / PAGE_SIZE)} ({total} factures)
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.max(0, current - 1))}
+              disabled={page === 0}
+              className="btn-secondary disabled:opacity-50"
+            >
+              Précédent
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((current) => current + 1)}
+              disabled={(page + 1) * PAGE_SIZE >= total}
+              className="btn-secondary disabled:opacity-50"
+            >
+              Suivant
+            </button>
+          </div>
+        </div>
+      )}
 
       {!loading && (
         <div className="flex justify-end">

@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { supabase } from "../../lib/supabase";
 import {
   Download,
   Plus,
@@ -11,8 +10,8 @@ import {
 } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
-import { useAuth } from "../../contexts/AuthContext"; // ✅ ADDED
-import { buildAccessFilter, hasPermission } from "../../lib/permissions"; // ✅ ADDED
+import { useAuth } from "../../contexts/AuthContext";
+import { reportsApi, type ReportRow } from "../../api/reports";
 
 // ============================================================
 // TYPES
@@ -20,17 +19,7 @@ import { buildAccessFilter, hasPermission } from "../../lib/permissions"; // ✅
 type ModuleId = string;
 
 type ModuleConfig = {
-  table: string;
   label: string;
-  dateColumn: string;
-  /** ✅ Column that stores the creator's user id (for row-level filtering) */
-  ownerColumn?: string;
-  /** ✅ Column that stores the assignee's user id (for row-level filtering) */
-  assignmentColumn?: string;
-  /** ✅ True if assignmentColumn is a Postgres array (e.g. text[]) */
-  assignmentIsArray?: boolean;
-  /** ✅ Module id used by the permission matrix (if different from key) */
-  permissionModule?: string;
 };
 
 type ModuleState = {
@@ -42,126 +31,34 @@ type ModuleState = {
 type CustomReportResult = {
   dateRange: { start: string; end: string };
   modules: ModuleId[];
-  data: Record<ModuleId, any[]>;
+  data: Record<ModuleId, ReportRow[]>;
   generatedAt: string;
   summary: string;
   notes: string;
+  truncatedModules: string[];
 };
 
 // ============================================================
 // CONFIGURATION
 // ============================================================
 const MODULE_CONFIG: Record<string, ModuleConfig> = {
-  missions: {
-    table: "weekly_missions",
-    label: "Missions",
-    dateColumn: "date",
-    ownerColumn: "created_by",
-    assignmentColumn: "responsible_id",
-    permissionModule: "missions",
-  },
-  review_notes: {
-    table: "review_notes",
-    label: "Notes de revue",
-    dateColumn: "created_at",
-    ownerColumn: "created_by",
-    assignmentColumn: "assigned_to_id",
-    permissionModule: "review_notes",
-  },
-  findings: {
-    table: "findings",
-    label: "Constats",
-    dateColumn: "created_at",
-    ownerColumn: "created_by",
-    assignmentColumn: "responsible_person",
-    permissionModule: "findings",
-  },
-  stock_items: {
-    table: "stock_items",
-    label: "Stock",
-    dateColumn: "created_at",
-    permissionModule: "stock",
-  },
-  fixed_assets: {
-    table: "fixed_assets",
-    label: "Immobilisations",
-    dateColumn: "created_at",
-    permissionModule: "immobilisations",
-  },
-  leave_requests: {
-    table: "leave_requests",
-    label: "Congés",
-    dateColumn: "created_at",
-    ownerColumn: "employee_id",
-    permissionModule: "conges",
-  },
-  clients: {
-    table: "clients",
-    label: "Clients",
-    dateColumn: "created_at",
-    permissionModule: "clients",
-  },
-  cac: {
-    table: "audit_mission_assignments",
-    label: "Suivi CAC",
-    dateColumn: "created_at",
-    assignmentColumn: "production_responsible",
-    assignmentIsArray: true,
-    permissionModule: "suivi_cac",
-  },
-  collaborateurs: {
-    table: "collaborateurs",
-    label: "Collaborateurs",
-    dateColumn: "created_at",
-    ownerColumn: "id",
-    permissionModule: "collaborateurs",
-  },
-  factures: {
-    table: "invoices",
-    label: "Factures",
-    dateColumn: "created_at",
-    permissionModule: "factures",
-  },
-  notes_de_frais: {
-    table: "expenses",
-    label: "Notes de frais",
-    dateColumn: "created_at",
-    ownerColumn: "user_id",
-    permissionModule: "notes_frais",
-  },
-  etablissements: {
-    table: "etablissements",
-    label: "Établissements",
-    dateColumn: "created_at",
-    permissionModule: "clients",
-  },
-  client_documents: {
-    table: "client_documents",
-    label: "Documents clients",
-    dateColumn: "created_at",
-    permissionModule: "clients",
-  },
-  client_taxes: {
-    table: "client_taxes",
-    label: "Taxes clients",
-    dateColumn: "created_at",
-    permissionModule: "clients",
-  },
-  caisse: {
-    table: "caisse",
-    label: "Caisse",
-    dateColumn: "date_piece",
-    permissionModule: "caisse",
-  },
-  fournisseurs: {
-    table: "fournisseurs",
-    label: "Fournisseurs",
-    dateColumn: "created_at",
-    permissionModule: "fournisseurs",
-  },
+  missions: { label: "Missions" },
+  review_notes: { label: "Notes de revue" },
+  findings: { label: "Constats" },
+  stock_items: { label: "Stock" },
+  fixed_assets: { label: "Immobilisations" },
+  leave_requests: { label: "Congés" },
+  clients: { label: "Clients" },
+  cac: { label: "Suivi CAC" },
+  collaborateurs: { label: "Collaborateurs" },
+  factures: { label: "Factures" },
+  notes_de_frais: { label: "Notes de frais" },
+  etablissements: { label: "Établissements" },
+  client_documents: { label: "Documents clients" },
+  client_taxes: { label: "Taxes clients" },
+  caisse: { label: "Caisse" },
+  fournisseurs: { label: "Fournisseurs" },
 };
-
-const MODULE_IDS = Object.keys(MODULE_CONFIG) as ModuleId[];
 
 // ============================================================
 // HELPERS
@@ -181,15 +78,16 @@ const formatDateTime = (dateStr: string) => {
 // ============================================================
 export default function ReportsPage() {
   const { t } = useTranslation();
-  const { user, profile } = useAuth(); // ✅ ADDED
+  const { profile } = useAuth();
 
-  const isSuperAdmin = profile?.role === "super_admin"; // ✅ ADDED
+  const isSuperAdmin = profile?.role === "super_admin";
 
   const [activeTab, setActiveTab] = useState<"audit" | "hr" | "custom">(
     "audit",
   );
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<ReportRow[]>([]);
+  const [reportError, setReportError] = useState("");
 
   // États pour le rapport personnalisé
   const [showCustomModal, setShowCustomModal] = useState(false);
@@ -208,14 +106,7 @@ export default function ReportsPage() {
   const [customNotes, setCustomNotes] = useState("");
   const [ignoreDates, setIgnoreDates] = useState(false);
 
-  // Dynamic Modules State — start with all hardcoded modules checked
-  const [modules, setModules] = useState<ModuleState[]>(() =>
-    MODULE_IDS.map((id) => ({
-      id,
-      label: MODULE_CONFIG[id].label,
-      checked: true,
-    })),
-  );
+  const [modules, setModules] = useState<ModuleState[]>([]);
 
   const allChecked = useMemo(() => modules.every((m) => m.checked), [modules]);
 
@@ -224,105 +115,52 @@ export default function ReportsPage() {
     loadData();
   }, [activeTab]);
 
-  // Fetch All Tables from Database (Dynamic Modules)
+  // Load only explicitly supported report modules visible to this user.
   useEffect(() => {
-    fetchAllTables();
+    loadReportModules();
   }, [profile?.role]);
 
-  async function fetchAllTables() {
+  async function loadReportModules() {
     try {
-      // Fetch all tables in the public schema
-      const { data, error } = await supabase
-        .from("information_schema.tables")
-        .select("table_name")
-        .eq("table_schema", "public");
-
-      if (error) throw error;
-
-      // Merge with existing configurations to retain labels + filter config
-      const mergedConfig = new Map<string, ModuleConfig>();
-      Object.entries(MODULE_CONFIG).forEach(([key, val]) =>
-        mergedConfig.set(key, val),
-      );
-
-      (data || []).forEach((table: any) => {
-        const name: string = table.table_name;
-        // Filter out internal Supabase tables
-        if (name.startsWith("_") || name === "schema_migrations") return;
-
-        if (!mergedConfig.has(name)) {
-          const autoLabel = name
-            .replace(/_/g, " ")
-            .replace(/\b\w/g, (c) => c.toUpperCase());
-          mergedConfig.set(name, {
-            table: name,
-            label: autoLabel,
-            dateColumn: "created_at",
-            permissionModule: name, // fall back to table name for permission check
-          });
-        }
-      });
-
-      // ✅ Filter modules based on user's permissions
-      //    - super_admin: sees EVERYTHING
-      //    - others: only modules where they have `view` permission
-      const visibleEntries = Array.from(mergedConfig.entries()).filter(
-        ([, cfg]) => {
-          if (isSuperAdmin) return true;
-          const permModule = cfg.permissionModule || cfg.table;
-          return hasPermission({ role: profile?.role }, permModule, "view");
-        },
-      );
-
-      const dynamicModules: ModuleState[] = visibleEntries.map(([id, cfg]) => ({
-        id,
-        label: cfg.label,
-        // super_admin: all checked by default
-        // others: unchecked by default (they choose)
-        checked: isSuperAdmin,
-      }));
-
-      setModules(dynamicModules);
-    } catch (err) {
-      console.warn(
-        "Unable to fetch all tables, falling back to default list:",
-        err,
-      );
-      // Fallback: use the hardcoded list, filtered by permission
+      const availableModules = await reportsApi.getCatalog();
       setModules(
-        MODULE_IDS.filter((id) => {
-          if (isSuperAdmin) return true;
-          const permModule = MODULE_CONFIG[id].permissionModule || id;
-          return hasPermission({ role: profile?.role }, permModule, "view");
-        }).map((id) => ({
+        availableModules.map(({ id, label }) => ({
           id,
-          label: MODULE_CONFIG[id].label,
+          label: MODULE_CONFIG[id]?.label ?? label,
           checked: isSuperAdmin,
         })),
+      );
+      setReportError("");
+    } catch (error) {
+      setModules([]);
+      setReportError(
+        error instanceof Error
+          ? error.message
+          : "Impossible de charger les modules de rapport.",
       );
     }
   }
 
   async function loadData() {
     setLoading(true);
+    setReportError("");
     try {
-      if (activeTab === "audit") {
-        const { data: missions } = await supabase
-          .from("weekly_missions")
-          .select("subject, status, progress, date")
-          .order("date", { ascending: false });
-        setData(missions || []);
-      } else if (activeTab === "hr") {
-        const { data: leaves } = await supabase
-          .from("leave_requests")
-          .select("employee_name, leave_type, status, start_date, end_date")
-          .order("created_at", { ascending: false });
-        setData(leaves || []);
+      if (activeTab === "audit" || activeTab === "hr") {
+        const report = await reportsApi.getStandard(activeTab);
+        setData(report.items);
+        if (report.truncated) {
+          setReportError("Le rapport est limité aux 500 premiers enregistrements.");
+        }
       } else {
         setData([]);
       }
-    } catch (err) {
-      console.error("Erreur de chargement :", err);
+    } catch (error) {
+      setData([]);
+      setReportError(
+        error instanceof Error
+          ? error.message
+          : "Erreur lors du chargement du rapport.",
+      );
     } finally {
       setLoading(false);
     }
@@ -359,54 +197,15 @@ export default function ReportsPage() {
     }
 
     setGenerating(true);
+    setReportError("");
     try {
-      const results: Partial<Record<ModuleId, any[]>> = {};
-
-      for (const moduleId of selectedModules) {
-        const config = MODULE_CONFIG[moduleId] || {
-          table: moduleId,
-          label: moduleId,
-          dateColumn: "created_at",
-          permissionModule: moduleId,
-        };
-        const tableName = config.table;
-        const dateCol = config.dateColumn;
-
-        // ✅ Row-level filtering
-        //    - super_admin: NO filter → all rows
-        //    - others: only own rows OR assigned rows (if they lack `view`)
-        const accessFilter = buildAccessFilter({
-          role: profile?.role,
-          module: (config.permissionModule || moduleId) as any,
-          currentUserId: user?.id,
-          ownerColumn: config.ownerColumn,
-          assignmentColumn: config.assignmentColumn,
-          assignmentIsArray: config.assignmentIsArray,
-        });
-
-        let query = supabase.from(tableName).select("*");
-
-        // Apply row-level filter (null for super_admin → no filter)
-        if (accessFilter) {
-          query = query.or(accessFilter);
-        }
-
-        // Apply date filter (unless user disabled it)
-        if (!ignoreDates) {
-          query = query
-            .gte(dateCol, `${customStartDate}T00:00:00`)
-            .lte(dateCol, `${customEndDate}T23:59:59`);
-        }
-
-        query = query.order(dateCol, { ascending: false });
-
-        const { data, error } = await query;
-        if (!error && data) {
-          results[moduleId] = data;
-        } else {
-          console.warn(`Erreur pour ${moduleId}:`, error);
-        }
-      }
+      const report = await reportsApi.generateCustom({
+        modules: selectedModules,
+        start_date: customStartDate,
+        end_date: customEndDate,
+        ignore_dates: ignoreDates,
+      });
+      const results = report.data;
 
       // Build summary
       const summaryLines = [
@@ -420,9 +219,14 @@ export default function ReportsPage() {
         "📊 Récapitulatif :",
       ];
       for (const [id, data] of Object.entries(results)) {
-        const count = (data as any[]).length;
+        const count = data.length;
         const label = MODULE_CONFIG[id]?.label || id;
         summaryLines.push(`  - ${count} ${label}${count > 1 ? "s" : ""}`);
+      }
+      if (report.truncated.length) {
+        summaryLines.push(
+          `⚠️ Résultats limités à 500 enregistrements pour : ${report.truncated.join(", ")}.`,
+        );
       }
       if (customNotes.trim()) {
         summaryLines.push("📝 Notes supplémentaires :");
@@ -433,14 +237,18 @@ export default function ReportsPage() {
       setCustomResult({
         dateRange: { start: customStartDate, end: customEndDate },
         modules: selectedModules,
-        data: results as Record<ModuleId, any[]>,
+        data: results,
         generatedAt: new Date().toISOString(),
         summary,
         notes: customNotes,
+        truncatedModules: report.truncated,
       });
-    } catch (err) {
-      console.error(err);
-      alert("Erreur lors de la génération du rapport.");
+    } catch (error) {
+      setReportError(
+        error instanceof Error
+          ? error.message
+          : "Erreur lors de la génération du rapport.",
+      );
     } finally {
       setGenerating(false);
     }
@@ -571,7 +379,7 @@ export default function ReportsPage() {
         });
 
         for (const item of moduleData) {
-          const rowData: Record<string, any> = {};
+          const rowData: Record<string, unknown> = {};
           keys.forEach((key) => {
             rowData[key] = item[key] ?? "";
           });
@@ -716,20 +524,26 @@ export default function ReportsPage() {
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
-                {modules.map((module) => (
-                  <label
-                    key={module.id}
-                    className="flex items-center gap-2 text-sm cursor-pointer text-gray-700 dark:text-gray-300"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={module.checked}
-                      onChange={() => toggleModule(module.id)}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    {module.label}
-                  </label>
-                ))}
+                {modules.length === 0 ? (
+                  <p className="col-span-2 text-sm text-gray-500 dark:text-gray-400">
+                    Aucun module de rapport disponible pour votre compte.
+                  </p>
+                ) : (
+                  modules.map((module) => (
+                    <label
+                      key={module.id}
+                      className="flex items-center gap-2 text-sm cursor-pointer text-gray-700 dark:text-gray-300"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={module.checked}
+                        onChange={() => toggleModule(module.id)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      {module.label}
+                    </label>
+                  ))
+                )}
               </div>
             </div>
 
@@ -776,6 +590,12 @@ export default function ReportsPage() {
                 )}
               </button>
             </div>
+
+            {reportError && (
+              <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+                {reportError}
+              </p>
+            )}
 
             {customResult && (
               <div className="mt-6 border-t border-gray-200 dark:border-gray-700 pt-6">
@@ -877,6 +697,11 @@ export default function ReportsPage() {
       </div>
 
       <div className="bg-white dark:bg-slate-800 rounded-xl shadow p-6">
+        {reportError && (
+          <p role="alert" className="mb-4 text-sm text-red-600 dark:text-red-400">
+            {reportError}
+          </p>
+        )}
         {data.length === 0 ? (
           <p className="text-gray-400 dark:text-gray-500 text-center py-8">
             {t("reports.noData")}

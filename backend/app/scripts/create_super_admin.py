@@ -18,9 +18,14 @@ import argparse
 import sys
 import uuid
 
+from sqlalchemy import func, text
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.core import utcnow
 from app.core.security import hash_password
 from app.database import SessionLocal
-from app.models.auth import Profile, User
+from app.models.auth import Profile, UserCredential
+from app.services.auth_service import normalize_email
 
 
 def main() -> int:
@@ -37,12 +42,16 @@ def main() -> int:
         print("Error: Password must be at least 8 characters.", file=sys.stderr)  # noqa: T201
         return 1
 
-    email = args.email.lower()
+    email = normalize_email(args.email)
     db = SessionLocal()
     try:
-        existing = db.query(User).filter(User.email == email).first()
+        existing = (
+            db.query(Profile)
+            .filter(func.lower(func.trim(Profile.email)) == email)
+            .first()
+        )
         if existing:
-            print(f"Error: An account with email {email} already exists.", file=sys.stderr)  # noqa: T201
+            print("Error: An account with that address already exists.", file=sys.stderr)  # noqa: T201
             return 1
 
         # Check if any super_admin already exists
@@ -58,27 +67,39 @@ def main() -> int:
                 print("Aborted.", file=sys.stderr)  # noqa: T201
                 return 1
 
+        db.rollback()
         user_id = str(uuid.uuid4())
-        user = User(
-            id=user_id,
-            email=email,
-            password_hash=hash_password(args.password),
-        )
-        profile = Profile(
-            id=user_id,
-            email=email,
-            full_name=f"{args.first_name} {args.last_name}".strip(),
-            role="super_admin",
-        )
-        db.add(user)
-        db.add(profile)
-        db.commit()
+        now = utcnow()
+        with db.begin():
+            db.execute(
+                text("INSERT INTO auth.users (id, email) VALUES (:id, :email)"),
+                {"id": user_id, "email": email},
+            )
+            profile = Profile(
+                id=user_id,
+                email=email,
+                full_name=f"{args.first_name} {args.last_name}".strip(),
+                role="super_admin",
+                active=True,
+            )
+            db.add(profile)
+            db.flush()
+            db.add(
+                UserCredential(
+                    id=user_id,
+                    email_normalized=email,
+                    password_hash=hash_password(args.password),
+                    is_active=True,
+                    activated_at=now,
+                    password_changed_at=now,
+                )
+            )
 
-        print(f"Success: super_admin account created for {email}.")  # noqa: T201
+        print("Success: super_admin account created.")  # noqa: T201
         print("You can now log in with this account at the PAJES frontend.")  # noqa: T201
         return 0
-    except Exception as exc:
-        print(f"Error: {exc}", file=sys.stderr)  # noqa: T201
+    except SQLAlchemyError as exc:
+        print(f"Error: account creation failed ({type(exc).__name__}).", file=sys.stderr)  # noqa: T201
         db.rollback()
         return 1
     finally:

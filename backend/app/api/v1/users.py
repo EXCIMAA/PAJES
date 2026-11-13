@@ -2,22 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.core import utcnow
 from app.database import get_db
-from app.models.auth import AuthSession, Profile, User
-from app.permissions.enforcer import PermissionService, get_current_profile, require_admin
-from app.permissions.matrix import ALL_ROLES, build_effective_matrix, get_default_permissions_for_role
+from app.models.auth import AuthSession, Profile, UserCredential
+from app.permissions.enforcer import get_current_profile, require_admin
 from app.schemas.auth import (
     MessageResponse,
     ProfileResponse,
-    RolePermissionsResponse,
     UpdateProfileRequest,
-    UpdateRolePermissionsRequest,
     UpdateUserRoleRequest,
     UserResponse,
 )
@@ -35,8 +32,8 @@ def list_users(
 ):
     offset = (page - 1) * page_size
     results = (
-        db.query(Profile, User)
-        .join(User, Profile.id == User.id)
+        db.query(Profile, UserCredential)
+        .outerjoin(UserCredential, Profile.id == UserCredential.id)
         .order_by(Profile.full_name)
         .offset(offset)
         .limit(page_size)
@@ -50,7 +47,9 @@ def list_users(
             role=p.role,
             department=p.department,
             phone=p.phone,
-            is_active=u.is_active,
+            is_active=bool(
+                p.active and u and u.is_active and not u.is_locked
+            ),
             created_at=p.created_at,
         )
         for p, u in results
@@ -66,7 +65,11 @@ def get_user(
     profile = db.query(Profile).filter(Profile.id == user_id).first()
     if not profile:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    user = profile.user
+    credential = (
+        db.query(UserCredential)
+        .filter(UserCredential.id == profile.id)
+        .first()
+    )
     return UserResponse(
         id=profile.id,
         email=profile.email,
@@ -74,7 +77,12 @@ def get_user(
         role=profile.role,
         department=profile.department,
         phone=profile.phone,
-        is_active=user.is_active if user else True,
+        is_active=bool(
+            profile.active
+            and credential
+            and credential.is_active
+            and not credential.is_locked
+        ),
         created_at=profile.created_at,
     )
 
@@ -111,12 +119,20 @@ def deactivate_user(
     admin: Annotated[Profile, Depends(require_admin)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
+    credential = (
+        db.query(UserCredential)
+        .filter(UserCredential.id == user_id)
+        .first()
+    )
+    if not credential:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    user.is_active = False
+    now = utcnow()
+    credential.is_active = False
+    db.query(AuthSession).filter(
+        AuthSession.user_id == user_id,
+        AuthSession.revoked_at.is_(None),
+    ).update({AuthSession.revoked_at: now}, synchronize_session=False)
     db.commit()
-    auth_service.revoke_user_sessions(db, user_id)
     return {"message": "User deactivated and sessions revoked"}
 
 
@@ -126,12 +142,22 @@ def activate_user(
     admin: Annotated[Profile, Depends(require_admin)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
+    credential = (
+        db.query(UserCredential)
+        .filter(UserCredential.id == user_id)
+        .first()
+    )
+    if not credential:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    user.is_active = True
-    user.is_locked = False
-    user.failed_login_count = 0
+    if not db.query(Profile.active).filter(Profile.id == user_id).scalar():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Profile status must be restored before activating credentials.",
+        )
+    credential.is_active = True
+    credential.is_locked = False
+    credential.locked_at = None
+    credential.failed_login_count = 0
     db.commit()
     return {"message": "User activated"}
 
@@ -146,9 +172,9 @@ def list_user_sessions(
     return [
         {
             "id": s.id,
-            "issued_at": s.issued_at.isoformat() if s.issued_at else None,
+            "issued_at": s.created_at.isoformat() if s.created_at else None,
             "expires_at": s.expires_at.isoformat() if s.expires_at else None,
-            "revoked": s.revoked,
+            "revoked": s.revoked_at is not None,
             "ip_address": s.ip_address,
             "user_agent": s.user_agent,
         }

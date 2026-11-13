@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus, Search, Edit2, Trash2, X, Check } from "lucide-react";
-import { supabase } from "../../lib/supabase";
+import { clientsApi } from "../../api/clients";
 import { useAuth } from "../../contexts/AuthContext";
 import { useCountry } from "../../contexts/CountryContext";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -98,23 +98,23 @@ type RefDocument = {
   id: number;
   category_id: number;
   label: string;
-  ref_categories_documents?: RefCategory;
+  ref_categories_documents?: RefCategory | null;
 };
 type ClientDocument = {
   id: number;
   client_id: string;
   document_id: number;
   status: "a_fournir" | "fourni" | "non_applicable";
-  date_fourni?: string;
-  commentaire?: string;
+  date_fourni?: string | null;
+  commentaire?: string | null;
 };
 type ClientTaxe = {
   id: number;
   client_id: string;
   taxe_id: number;
   assujetti: boolean;
-  date_derniere_declaration?: string;
-  commentaire?: string;
+  date_derniere_declaration?: string | null;
+  commentaire?: string | null;
 };
 
 type ModalState = { open: boolean; client: Partial<Client> | null };
@@ -160,38 +160,23 @@ export default function ClientsPage() {
 
   const loadReferences = async () => {
     try {
-      const [
-        formesRes,
-        statutsRes,
-        regimesRes,
-        naturesRes,
-        taxesRes,
-        categoriesRes,
-        documentsRes,
-      ] = await Promise.all([
-        supabase.from("ref_formes_juridiques").select("*").order("label"),
-        supabase.from("ref_statuts_fiscaux").select("*").order("label"),
-        supabase.from("ref_regimes_fiscaux").select("*").order("label"),
-        supabase.from("ref_natures").select("*").order("label"),
-        supabase.from("ref_taxes").select("*").order("libelle"),
-        supabase.from("ref_categories_documents").select("*").order("label"),
-        supabase
-          .from("ref_documents")
-          .select("*, ref_categories_documents!inner(label)")
-          .order("category_id, label"),
-      ]);
-
+      const data = await clientsApi.references();
       setRefs({
-        formes: formesRes.data || [],
-        statuts: statutsRes.data || [],
-        regimes: regimesRes.data || [],
-        natures: naturesRes.data || [],
-        taxes: taxesRes.data || [],
-        categories: categoriesRes.data || [],
-        documents: documentsRes.data || [],
+        formes: data.formes,
+        statuts: data.statuts,
+        regimes: data.regimes,
+        natures: data.natures,
+        taxes: data.taxes,
+        categories: data.categories,
+        documents: data.documents,
       });
     } catch (err) {
       console.error("Erreur chargement références:", err);
+      setError(
+        err instanceof Error
+          ? `Erreur chargement références: ${err.message}`
+          : "Erreur chargement références.",
+      );
     }
   };
 
@@ -200,12 +185,8 @@ export default function ClientsPage() {
     setLoading(true);
     setError("");
     try {
-      const { data, error } = await supabase
-        .from("clients")
-        .select("*")
-        .order("client_code");
-      if (error) throw error;
-      setClients(data || []);
+      const data = await clientsApi.list();
+      setClients(data as Client[]);
     } catch (err: any) {
       setError(`Erreur chargement clients: ${err.message}`);
     } finally {
@@ -220,12 +201,9 @@ export default function ClientsPage() {
       return;
     }
     try {
-      const [docsRes, taxesRes] = await Promise.all([
-        supabase.from("client_documents").select("*").eq("client_id", clientId),
-        supabase.from("client_taxes").select("*").eq("client_id", clientId),
-      ]);
-      setClientDocuments(docsRes.data || []);
-      setClientTaxes(taxesRes.data || []);
+      const links = await clientsApi.links(clientId);
+      setClientDocuments(links.documents);
+      setClientTaxes(links.taxes);
     } catch (err) {
       console.error("Erreur chargement liens:", err);
     }
@@ -246,25 +224,8 @@ export default function ClientsPage() {
   }, [modal.open, modal.client?.id]);
 
   const generateClientCode = async (countryCode: string) => {
-    const { data, error } = await supabase
-      .from("clients")
-      .select("client_code")
-      .like("client_code", `${countryCode}%`)
-      .order("client_code", { ascending: false })
-      .limit(1);
-
-    if (error) {
-      console.error("Erreur génération code:", error);
-      return `${countryCode}00001`;
-    }
-
-    let nextNum = 1;
-    if (data && data.length > 0) {
-      const lastCode = data[0].client_code;
-      const match = lastCode.match(/\d+$/);
-      if (match) nextNum = parseInt(match[0]) + 1;
-    }
-    return `${countryCode}${String(nextNum).padStart(5, "0")}`;
+    const result = await clientsApi.nextCode(countryCode);
+    return result.client_code;
   };
 
   const openAdd = async () => {
@@ -328,11 +289,7 @@ export default function ClientsPage() {
     if (!confirm(`Supprimer définitivement "${clientName}" ?`)) return;
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from("clients")
-        .delete()
-        .eq("id", clientId);
-      if (error) throw error;
+      await clientsApi.delete(clientId);
       await loadClients();
       await addNotification({
         title: "Client supprimé",
@@ -459,64 +416,30 @@ export default function ClientsPage() {
 
     try {
       if (clientId) {
-        const { error: updateError } = await supabase
-          .from("clients")
-          .update(payload)
-          .eq("id", clientId);
-        if (updateError) throw updateError;
+        await clientsApi.update(clientId, payload);
       } else {
-        const { data: inserted, error: insertError } = await supabase
-          .from("clients")
-          .insert(payload)
-          .select("id, name")
-          .single();
-        if (insertError) throw insertError;
-        clientId = inserted.id;
-        clientName = inserted.name || clientName;
+        const inserted = await clientsApi.create(payload);
+        clientId = String(inserted.id);
+        clientName = String(inserted.name || clientName);
       }
 
       if (clientId) {
-        await supabase
-          .from("client_documents")
-          .delete()
-          .eq("client_id", clientId);
-
-        const docsToInsert = clientDocuments
+        const docsToSave = clientDocuments
           .filter((d) => d.status && d.document_id)
           .map((d) => ({
-            client_id: clientId,
             document_id: d.document_id,
             status: d.status,
-            date_fourni:
-              d.status === "fourni"
-                ? new Date().toISOString().split("T")[0]
-                : null,
-            commentaire: null,
           }));
-        if (docsToInsert.length > 0) {
-          const { error: docsError } = await supabase
-            .from("client_documents")
-            .insert(docsToInsert);
-          if (docsError) throw docsError;
-        }
-
-        await supabase.from("client_taxes").delete().eq("client_id", clientId);
-
-        const taxesToInsert = clientTaxes
+        const taxesToSave = clientTaxes
           .filter((t) => t.assujetti !== undefined && t.taxe_id)
           .map((t) => ({
-            client_id: clientId,
             taxe_id: t.taxe_id,
             assujetti: t.assujetti,
-            date_derniere_declaration: null,
-            commentaire: null,
           }));
-        if (taxesToInsert.length > 0) {
-          const { error: taxesError } = await supabase
-            .from("client_taxes")
-            .insert(taxesToInsert);
-          if (taxesError) throw taxesError;
-        }
+        await clientsApi.saveLinks(clientId, {
+          documents: docsToSave,
+          taxes: taxesToSave,
+        });
       }
 
       await addNotification({

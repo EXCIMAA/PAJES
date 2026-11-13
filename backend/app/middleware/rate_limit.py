@@ -1,15 +1,14 @@
-"""Rate limiting middleware for login attempts.
+"""Per-process sliding-window limits for authentication endpoints.
 
-Tracks login attempts per IP address in-memory. Prevents brute-force
-attacks by limiting requests to login_rate_limit_per_minute per IP.
-Uses a simple sliding window; for multi-process deployments a Redis
-backend would be needed (documented as a future requirement).
+The application must use a shared rate-limit store before deploying multiple
+workers or instances; this middleware intentionally does not trust forwarded IP
+headers unless a trusted-proxy policy is configured.
 """
 
 from __future__ import annotations
 
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -19,38 +18,53 @@ from app.core.config import settings
 
 
 class LoginRateLimitMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, max_requests: int | None = None, window_seconds: int | None = None):
+    def __init__(
+        self,
+        app,
+        max_requests: int | None = None,
+        window_seconds: int | None = None,
+    ):
         super().__init__(app)
-        self._max = max_requests or settings.login_rate_limit_per_minute
-        self._window = window_seconds or settings.login_rate_window_seconds
-        self._attempts: dict[str, list[float]] = defaultdict(list)
+        default_window = settings.login_rate_window_seconds
+        self._window = window_seconds or default_window
+        shared_limit = max_requests
+        self._limits = {
+            "/api/v1/auth/login": shared_limit or settings.login_rate_limit_per_minute,
+            "/api/v1/auth/signup": shared_limit or settings.signup_rate_limit_per_minute,
+            "/api/v1/auth/activate": (
+                shared_limit or settings.activation_rate_limit_per_minute
+            ),
+            "/api/v1/auth/reset-password": (
+                shared_limit or settings.password_reset_rate_limit_per_minute
+            ),
+            "/api/v1/auth/reset-password/confirm": (
+                shared_limit or settings.password_reset_rate_limit_per_minute
+            ),
+        }
+        self._attempts: dict[tuple[str, str], deque[float]] = defaultdict(deque)
 
-    def _get_client_ip(self, request: Request) -> str:
-        forwarded = request.headers.get("X-Forwarded-For", "")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
+    def _client_ip(self, request: Request) -> str:
         return request.client.host if request.client else "unknown"
 
-    def _prune_old(self, ip: str, now: float) -> list[float]:
-        cutoff = now - self._window
-        self._attempts[ip] = [t for t in self._attempts[ip] if t > cutoff]
-        return self._attempts[ip]
-
     async def dispatch(self, request: Request, call_next):
-        if request.url.path != "/api/v1/auth/login" or request.method != "POST":
+        path = request.url.path.rstrip("/")
+        limit = self._limits.get(path)
+        if request.method != "POST" or limit is None:
             return await call_next(request)
 
-        ip = self._get_client_ip(request)
+        key = (self._client_ip(request), path)
         now = time.monotonic()
-        recent = self._prune_old(ip, now)
-
-        if len(recent) >= self._max:
+        attempts = self._attempts[key]
+        cutoff = now - self._window
+        while attempts and attempts[0] <= cutoff:
+            attempts.popleft()
+        if len(attempts) >= limit:
             return Response(
-                content='{"detail":"Too many login attempts. Please try again later."}',
+                content='{"detail":"Too many authentication attempts. Try again later."}',
                 status_code=429,
                 media_type="application/json",
                 headers={"Retry-After": str(self._window)},
             )
 
-        self._attempts[ip].append(now)
+        attempts.append(now)
         return await call_next(request)

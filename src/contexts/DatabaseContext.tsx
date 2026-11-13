@@ -1,5 +1,14 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { checkDatabaseConnection, isSupabaseConfigured } from '../lib/supabase';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { useAuth } from "./AuthContext";
+import { ApiError, api } from "../lib/api";
 
 interface DatabaseContextValue {
   connected: boolean;
@@ -11,6 +20,7 @@ interface DatabaseContextValue {
 const DatabaseContext = createContext<DatabaseContextValue | null>(null);
 
 export function DatabaseProvider({ children }: { children: ReactNode }) {
+  const { isDemo } = useAuth();
   const [connected, setConnected] = useState(false);
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,36 +30,59 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     async function verify() {
-      setChecking(true);
-      if (!isSupabaseConfigured) {
-        if (!cancelled) {
-          setConnected(false);
-          setError('Variables Supabase manquantes dans .env');
-          setChecking(false);
-        }
+      if (isDemo) {
+        setConnected(false);
+        setError(null);
+        setChecking(false);
         return;
       }
 
-      const result = await checkDatabaseConnection();
-      if (!cancelled) {
-        setConnected(result.ok);
-        setError(result.error ?? null);
-        setChecking(false);
+      setChecking(true);
+      try {
+        await api.get<{ status: string; db: { ok: boolean; detail: string } }>(
+          "/health/ready",
+        );
+        if (!cancelled) {
+          setConnected(true);
+          setError(null);
+        }
+      } catch (verificationError) {
+        if (!cancelled) {
+          setConnected(false);
+          setError(
+            verificationError instanceof ApiError &&
+              verificationError.status === 503
+              ? "La base PostgreSQL configurée est indisponible."
+              : verificationError instanceof Error
+                ? verificationError.message
+                : "Impossible de vérifier l'état de l'API PAJES.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setChecking(false);
+        }
       }
     }
 
-    verify();
-    return () => { cancelled = true; };
-  }, [tick]);
+    void verify();
+    return () => {
+      cancelled = true;
+    };
+  }, [isDemo, tick]);
+
+  const recheck = useCallback(() => {
+    setTick((current) => current + 1);
+  }, []);
 
   const value = useMemo(
     () => ({
       connected,
       checking,
       error,
-      recheck: () => setTick((t) => t + 1),
+      recheck,
     }),
-    [connected, checking, error]
+    [connected, checking, error, recheck],
   );
 
   return <DatabaseContext.Provider value={value}>{children}</DatabaseContext.Provider>;
@@ -57,6 +90,6 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
 
 export function useDatabase() {
   const context = useContext(DatabaseContext);
-  if (!context) throw new Error('useDatabase must be used within DatabaseProvider');
+  if (!context) throw new Error("useDatabase must be used within DatabaseProvider");
   return context;
 }

@@ -1,6 +1,5 @@
-const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"
-).replace(/\/$/, "");
+import { api } from "../lib/api";
+export { ApiError as BusinessIntelligenceApiError } from "../lib/api";
 
 export interface BIMetric {
   available: boolean;
@@ -22,6 +21,43 @@ export interface BIOverview {
   };
   sources: Record<string, { available: boolean; table: string | null }>;
   refresh: { mode: string };
+}
+
+export interface DashboardMetric {
+  available: boolean;
+  value: number | null;
+  by_currency?: Record<string, number> | null;
+  reason?: string;
+}
+
+export interface DashboardData {
+  metrics: {
+    active_engagements: DashboardMetric;
+    open_review_notes: DashboardMetric;
+    open_findings: DashboardMetric;
+    active_clients: DashboardMetric;
+    inventory_value: DashboardMetric;
+    asset_value: DashboardMetric;
+    open_expenses: DashboardMetric;
+  };
+  charts: {
+    engagements: Array<{ name: string; value: number }>;
+    review_notes: Array<{ name: string; value: number }>;
+    findings: Array<{ name: string; value: number }>;
+  };
+  top_clients: Array<{
+    clientName: string;
+    totalRevenue: number;
+    invoiceCount: number;
+    averageInvoice: number;
+    lastInvoice: string;
+  }>;
+  activities: Array<{
+    id: string;
+    title: string;
+    message: string;
+    date: string;
+  }>;
 }
 
 export interface BIReport {
@@ -49,51 +85,6 @@ export interface BIEmbedToken {
   expiration: string | null;
 }
 
-export class BusinessIntelligenceApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
-    this.name = "BusinessIntelligenceApiError";
-  }
-}
-
-function csrfToken(): string | undefined {
-  return document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("pajes_csrf="))
-    ?.slice("pajes_csrf=".length);
-}
-
-async function request<T>(
-  path: string,
-  options: RequestInit = {},
-): Promise<T> {
-  const headers = new Headers(options.headers);
-  headers.set("Accept", "application/json");
-  if (options.method && options.method !== "GET") {
-    const token = csrfToken();
-    if (token) headers.set("X-CSRF-Token", decodeURIComponent(token));
-  }
-
-  const response = await fetch(`${API_BASE_URL}/api/v1/business-intelligence${path}`, {
-    ...options,
-    headers,
-    credentials: "include",
-  });
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as
-      | { detail?: string }
-      | null;
-    throw new BusinessIntelligenceApiError(
-      body?.detail || `Business Intelligence API returned ${response.status}.`,
-      response.status,
-    );
-  }
-  return (await response.json()) as T;
-}
-
 function dateQuery(startDate: string, endDate: string): string {
   const query = new URLSearchParams();
   if (startDate) query.set("start_date", startDate);
@@ -103,53 +94,58 @@ function dateQuery(startDate: string, endDate: string): string {
 }
 
 export const businessIntelligenceApi = {
+  getDashboard: () => api.get<DashboardData>("/business-intelligence/dashboard"),
   getOverview: (startDate: string, endDate: string) =>
-    request<BIOverview>(`/overview${dateQuery(startDate, endDate)}`),
+    api.get<BIOverview>(`/business-intelligence/overview${dateQuery(startDate, endDate)}`),
   getFinancial: (startDate: string, endDate: string) =>
-    request<Record<string, unknown>>(`/analytics/financial${dateQuery(startDate, endDate)}`),
+    api.get<Record<string, unknown>>(
+      `/business-intelligence/analytics/financial${dateQuery(startDate, endDate)}`,
+    ),
   getClients: (startDate: string, endDate: string) =>
-    request<{ available: boolean; items: Array<{ client: string; revenue: number }> }>(
-      `/analytics/clients${dateQuery(startDate, endDate)}`,
+    api.get<{ available: boolean; items: Array<{ client: string; revenue: number }> }>(
+      `/business-intelligence/analytics/clients${dateQuery(startDate, endDate)}`,
     ),
   getEngagements: () =>
-    request<{ available: boolean; items: Array<{ status: string; count: number }> }>(
-      "/analytics/engagements",
+    api.get<{ available: boolean; items: Array<{ status: string; count: number }> }>(
+      "/business-intelligence/analytics/engagements",
     ),
   getEmployees: () =>
-    request<{ available: boolean; items: unknown[]; reason?: string }>(
-      "/analytics/employees",
+    api.get<{ available: boolean; items: unknown[]; reason?: string }>(
+      "/business-intelligence/analytics/employees",
     ),
   getCashFlow: (startDate: string, endDate: string) =>
-    request<{
+    api.get<{
       available: boolean;
       items: Array<{ period: string | null; inflow: number; outflow: number; net: number }>;
-    }>(`/analytics/cash-flow${dateQuery(startDate, endDate)}`),
+    }>(`/business-intelligence/analytics/cash-flow${dateQuery(startDate, endDate)}`),
   getStock: () =>
-    request<{
+    api.get<{
       available: boolean;
       valuation: number | null;
       low_stock_count: number | null;
       items: Array<{ name: string; value: number }>;
-    }>("/analytics/stock"),
+    }>("/business-intelligence/analytics/stock"),
   getExpenses: (startDate: string, endDate: string) =>
-    request<{
+    api.get<{
       available: boolean;
       total: BIMetric;
       categories: Array<{ category: string; value: number }>;
-    }>(`/analytics/expenses${dateQuery(startDate, endDate)}`),
+    }>(`/business-intelligence/analytics/expenses${dateQuery(startDate, endDate)}`),
   getDataStatus: () =>
-    request<{
+    api.get<{
       checked_at: string;
       refresh_mode: string;
       sources: Record<string, { available: boolean; table: string | null }>;
       powerbi_configured: boolean;
       powerbi_dataset_refresh: string;
-    }>("/data-status"),
-  getReports: () => request<BIReportList>("/reports"),
+    }>("/business-intelligence/data-status"),
+  getReports: () => api.get<BIReportList>("/business-intelligence/reports"),
   getReportMetadata: (reportId: string) =>
-    request<BIReportMetadata>(`/reports/${encodeURIComponent(reportId)}`),
+    api.get<BIReportMetadata>(
+      `/business-intelligence/reports/${encodeURIComponent(reportId)}`,
+    ),
   getEmbedToken: (reportId: string) =>
-    request<BIEmbedToken>(`/reports/${encodeURIComponent(reportId)}/embed-token`, {
-      method: "POST",
-    }),
+    api.post<BIEmbedToken>(
+      `/business-intelligence/reports/${encodeURIComponent(reportId)}/embed-token`,
+    ),
 };

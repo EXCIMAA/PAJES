@@ -1,8 +1,7 @@
-# PAJES Backend — FastAPI + SQLAlchemy + MySQL
+# PAJES Backend — FastAPI + SQLAlchemy + PostgreSQL
 
 Python backend for the PAJES accounting platform. Pairs with the existing
-React + TypeScript + Vite frontend in `/frontend` (currently `/src` at the
-repo root).
+React + TypeScript + Vite frontend in the repository's `src` directory.
 
 ## Stack
 
@@ -10,38 +9,43 @@ repo root).
 - **FastAPI** — REST API
 - **SQLAlchemy 2.x** — ORM
 - **Alembic** — database migrations
-- **MySQL 8** — target database (via PyMySQL driver)
+- **PostgreSQL 17** — configured database (via psycopg 3)
 - **Pydantic / pydantic-settings** — validation + config
 - **passlib[argon2]** — password hashing (Argon2id)
 
 ## Setup (local)
 
 ```bash
-cd backend
-cp .env.example .env          # then edit .env with real MySQL + secrets
-uv sync                       # create venv + install dependencies (incl. dev)
-uv run alembic upgrade head   # apply migrations to MySQL
-uv run uvicorn app.main:app --reload --port 8000
+Set-Location backend
+Copy-Item .env.example .env   # edit DATABASE_URL and AUTH_SECRET_KEY
+uv sync
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-API docs: http://localhost:8000/api/docs
+API docs: http://127.0.0.1:8000/api/docs
+
+Set `DATABASE_URL` to the intended PostgreSQL instance and database. Do not
+run `uv run alembic upgrade head` against the protected imported database:
+schema proposals require explicit owner approval. The repository's current
+operational APIs depend on existing tables and do not automatically migrate or
+seed business data.
+
+The database readiness probe is `GET /api/v1/health/ready`; it returns HTTP 503
+with a generic database-unavailable detail when PostgreSQL cannot be reached.
+The liveness probe `GET /api/v1/health` does not require the database.
 
 ## Business Intelligence and Power BI
 
 The BI API is mounted at `/api/v1/business-intelligence`. It reflects only
-verified PAJES tables (`clients`, `engagements`, `invoices`, `fixed_assets`,
-`stock_items` / `inventory_items`, and known optional operational tables) that
-are present in the FastAPI PostgreSQL database. Missing tables are reported
-as unavailable; the service does not seed or invent analytics data. The
-current backend migrations create authentication tables only, so business
-analytics remain unavailable until the verified business data is migrated or
-connected to this database. No BI migration modifies transactional data.
+tables found in the configured PostgreSQL database; missing sources are
+reported as unavailable, and no demo analytics are substituted. Reports are
+available under `/api/v1/reports`.
 
-The existing browser application still uses Supabase Authentication, while
-these FastAPI routes require a valid FastAPI session (`pajes_session`). Those
-identity systems are not yet bridged. A user must have a provisioned FastAPI
-account/session before the BI API can return data; the frontend reports this
-condition rather than trusting a browser-supplied role.
+The browser uses FastAPI-managed sessions (`pajes_session`) and CSRF
+protection. Existing imported profiles do not automatically have FastAPI
+password credentials; see `sql/proposals/auth_storage_migration.proposal.sql`
+and the migration checklist. Do not claim existing-user authentication or
+live PostgreSQL integration until both are provisioned and tested.
 
 Power BI Embedded is optional. Configure the following backend environment
 variables only after creating an Entra service principal and assigning it the
@@ -62,13 +66,12 @@ Power BI Service or through a separately configured refresh workflow.
 ## Tests
 
 ```bash
-uv run pytest -q                       # runs liveness probe test
-PAJES_ENV_NO_DB=0 uv run pytest -q     # also runs readiness (needs MySQL)
+uv run pytest -q
 ```
 
-> The Bolt sandbox cannot run Python or reach MySQL. Run the backend and
-> tests in your own environment. See the migration report for what each
-> phase actually verified.
+Tests use isolated SQLite fixtures for database writes. The optional
+`test_readiness_needs_db` test requires the configured PostgreSQL instance.
+Run Ruff with `uv run ruff check app tests`.
 
 ## Project layout
 

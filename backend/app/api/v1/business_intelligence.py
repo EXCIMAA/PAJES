@@ -23,6 +23,16 @@ logger = logging.getLogger("pajes.business_intelligence")
 router = APIRouter(prefix="/business-intelligence", tags=["business-intelligence"])
 
 BI_MODULES = {
+    "dashboard": (
+        "factures",
+        "clients",
+        "missions",
+        "review_notes",
+        "findings",
+        "stock",
+        "immobilisations",
+        "notes_frais",
+    ),
     "overview": (
         "factures",
         "clients",
@@ -166,6 +176,21 @@ def get_overview(
         module for module in BI_MODULES["overview"] if permissions.has(profile.role, module, "view")
     }
     return BusinessIntelligenceService(db).overview(start_date, end_date, allowed)
+
+
+@router.get("/dashboard")
+def get_dashboard(
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    _require_bi_access(profile, db, "dashboard")
+    permissions = PermissionService(db)
+    allowed = {
+        module
+        for module in BI_MODULES["dashboard"]
+        if permissions.has(profile.role, module, "view")
+    }
+    return BusinessIntelligenceService(db).dashboard(str(profile.id), allowed)
 
 
 @router.get("/analytics/financial")

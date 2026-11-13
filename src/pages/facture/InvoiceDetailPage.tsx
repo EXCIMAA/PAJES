@@ -2,13 +2,14 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { Edit2, Download, ArrowLeft } from "lucide-react";
 import { addNotification } from "../../lib/notifications";
-import { supabase } from "../../lib/supabase";
 import { InvoiceTemplate } from "../../components/InvoiceTemplate";
 import html2pdf from "html2pdf.js";
 import { useAuth } from "../../contexts/AuthContext";
+import { invoicesApi, type InvoiceRecord, type InvoiceLineRecord } from "../../api/invoices";
+import { ProtectedAction } from "../../components/auth/ProtectedAction";
 
-type Invoice = any;
-type Line = any;
+type Invoice = InvoiceRecord;
+type Line = InvoiceLineRecord;
 
 const statusColors: Record<string, string> = {
   draft: "bg-slate-100 text-slate-600",
@@ -31,6 +32,7 @@ export default function InvoiceDetailPage() {
   const [lines, setLines] = useState<Line[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [totals, setTotals] = useState({
     honoraires_total: 0,
     retenus_total: 0,
@@ -52,41 +54,24 @@ export default function InvoiceDetailPage() {
       }
 
       setLoading(true);
+      setError(null);
       try {
-        const { data: invoiceData, error: invoiceError } = await supabase
-          .from("invoices")
-          .select("*")
-          .eq("id", id)
-          .maybeSingle();
-
-        if (invoiceError) throw new Error(invoiceError.message);
-        if (!invoiceData) {
-          setInvoice(null);
-          return;
-        }
+        if (!id) throw new Error("Identifiant de facture manquant.");
+        const detail = await invoicesApi.get(id);
         if (cancelled) return;
-        setInvoice(invoiceData);
-
-        const { data: linesData, error: linesError } = await supabase
-          .from("invoice_lines")
-          .select("*")
-          .eq("invoice_id", id)
-          .order("sort_order");
-
-        if (linesError) throw new Error(linesError.message);
-
-        const finalLines = linesData || [];
+        setInvoice(detail.invoice);
+        const finalLines = detail.lines;
         setLines(finalLines);
 
         const honoraires_total = finalLines
           .filter((l) => l.section === "HONORAIRES")
-          .reduce((sum, l) => sum + (l.montant || 0), 0);
+          .reduce((sum, l) => sum + Number(l.montant || 0), 0);
         const retenus_total = finalLines
           .filter((l) => l.section === "RETENUS")
-          .reduce((sum, l) => sum + (l.montant || 0), 0);
+          .reduce((sum, l) => sum + Number(l.montant || 0), 0);
         const debours_total = finalLines
           .filter((l) => l.section === "DEBOURS")
-          .reduce((sum, l) => sum + (l.montant || 0), 0);
+          .reduce((sum, l) => sum + Number(l.montant || 0), 0);
         const montant_ht = honoraires_total + debours_total - retenus_total;
         const tva = honoraires_total * 0.1925;
         const montant_ttc = montant_ht + tva;
@@ -100,7 +85,12 @@ export default function InvoiceDetailPage() {
           tva,
         });
       } catch (err) {
-        console.error(err);
+        if (!cancelled) {
+          setError(
+            err instanceof Error ? err.message : "Erreur de chargement.",
+          );
+          setInvoice(null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -124,24 +114,35 @@ export default function InvoiceDetailPage() {
   }, [loading, invoice, searchParams]);
 
   const handleStatusChange = async (newStatus: string) => {
-    if (!invoice) return;
+    if (!invoice || !id) return;
     setUpdatingStatus(true);
-    const { error } = await supabase
-      .from("invoices")
-      .update({ status: newStatus })
-      .eq("id", invoice.id);
-    if (error) {
-      console.error("Error updating status:", error);
-      alert("Erreur lors de la mise à jour du statut");
-    } else {
+    try {
+      if (!["draft", "sent", "paid", "cancelled", "pending"].includes(newStatus)) {
+        throw new Error("Statut de facture invalide.");
+      }
+      await invoicesApi.updateStatus(
+        id,
+        newStatus as "draft" | "sent" | "paid" | "cancelled" | "pending",
+      );
       setInvoice({ ...invoice, status: newStatus });
       void addNotification({
         title: "Statut de facture mis à jour",
         message: `Le statut de la facture a été changé en ${newStatus}.`,
         type: "invoice",
       });
+    } catch (updateError) {
+      setError(
+        updateError instanceof Error
+          ? updateError.message
+          : "Erreur lors de la mise à jour du statut.",
+      );
+      alert(
+        "Erreur lors de la mise à jour du statut : " +
+          (updateError instanceof Error ? updateError.message : "Erreur inconnue"),
+      );
+    } finally {
+      setUpdatingStatus(false);
     }
-    setUpdatingStatus(false);
   };
 
   const handleDownloadPDF = async () => {
@@ -184,7 +185,9 @@ export default function InvoiceDetailPage() {
   if (!invoice) {
     return (
       <div className="text-center py-12">
-        <p className="text-slate-500">Facture non trouvée</p>
+        <p role={error ? "alert" : undefined} className={error ? "text-red-500" : "text-slate-500"}>
+          {error ?? "Facture non trouvée"}
+        </p>
       </div>
     );
   }
@@ -220,26 +223,28 @@ export default function InvoiceDetailPage() {
           <ArrowLeft size={16} /> Retour
         </Link>
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-slate-600">Statut :</span>
-            <select
-              value={invoice.status}
-              onChange={(e) => handleStatusChange(e.target.value)}
-              disabled={updatingStatus}
-              className={`text-sm font-medium px-3 py-1.5 rounded-full border-0 focus:ring-2 focus:ring-blue-500 cursor-pointer ${
-                statusColors[invoice.status] || statusColors.draft
-              }`}
-            >
-              {Object.entries(statusLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-            {updatingStatus && (
-              <div className="w-4 h-4 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-            )}
-          </div>
+          <ProtectedAction module="factures" action="edit">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-slate-600">Statut :</span>
+              <select
+                value={invoice.status}
+                onChange={(e) => void handleStatusChange(e.target.value)}
+                disabled={updatingStatus}
+                className={`text-sm font-medium px-3 py-1.5 rounded-full border-0 focus:ring-2 focus:ring-blue-500 cursor-pointer ${
+                  statusColors[invoice.status] || statusColors.draft
+                }`}
+              >
+                {Object.entries(statusLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              {updatingStatus && (
+                <div className="w-4 h-4 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+              )}
+            </div>
+          </ProtectedAction>
           <Link
             to={`/factures/${id}/edit`}
             className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-100 transition-all"
