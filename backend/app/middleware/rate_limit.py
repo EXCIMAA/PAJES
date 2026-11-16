@@ -34,6 +34,9 @@ class LoginRateLimitMiddleware(BaseHTTPMiddleware):
             "/api/v1/auth/activate": (
                 shared_limit or settings.activation_rate_limit_per_minute
             ),
+            "/api/v1/auth/resend-activation": (
+                shared_limit or settings.activation_rate_limit_per_minute
+            ),
             "/api/v1/auth/reset-password": (
                 shared_limit or settings.password_reset_rate_limit_per_minute
             ),

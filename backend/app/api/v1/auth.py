@@ -20,6 +20,7 @@ from app.schemas.auth import (
     PasswordResetConfirm,
     PasswordResetRequest,
     ProfileResponse,
+    ResendActivationRequest,
     SignupRequest,
 )
 from app.services import auth_service
@@ -66,6 +67,33 @@ def signup(
     db: Annotated[Session, Depends(get_db)],
 ):
     email_job = auth_service.signup(db, body)
+    if email_job:
+        activation_url = (
+            f"{settings.frontend_url.rstrip('/')}/activate-account"
+            f"#token={email_job.token}"
+        )
+        background_tasks.add_task(
+            send_auth_email,
+            email_job.email,
+            "PAJES — Activation du compte",
+            activation_url,
+            "Utilisez ce lien pour choisir votre mot de passe PAJES.",
+            f"Ce lien expire dans {settings.activation_token_ttl_hours} heures.",
+        )
+    return {"message": _GENERIC_AUTH_MESSAGE}
+
+
+@router.post(
+    "/resend-activation",
+    response_model=MessageResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def resend_activation_instructions(
+    body: ResendActivationRequest,
+    background_tasks: BackgroundTasks,
+    db: Annotated[Session, Depends(get_db)],
+):
+    email_job = auth_service.resend_activation(db, str(body.email))
     if email_job:
         activation_url = (
             f"{settings.frontend_url.rstrip('/')}/activate-account"

@@ -50,6 +50,15 @@ class PasswordResetRequest(BaseModel):
         return str(value).strip().lower()
 
 
+class ResendActivationRequest(BaseModel):
+    email: EmailStr
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, value: object) -> object:
+        return str(value).strip().lower()
+
+
 class PasswordResetConfirm(BaseModel):
     token: str = Field(min_length=20, max_length=256)
     new_password: str = Field(min_length=8, max_length=128)

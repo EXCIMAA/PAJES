@@ -288,6 +288,57 @@ def signup(db: Session, body: SignupRequest) -> AuthEmail | None:
         ) from error
 
 
+def resend_activation(db: Session, email: str) -> AuthEmail | None:
+    """Re-send activation instructions for an eligible profile.
+
+    Eligible profiles are active and have no credentials yet. Ineligible
+    requests (unknown email, inactive profile, or account that already has
+    credentials) return None so callers keep emitting a generic public
+    response and never confirm whether an account exists.
+    No identifying information (email, token) is logged.
+    """
+    require_auth_storage(db)
+    normalized = normalize_email(str(email))
+    started_at = perf_counter()
+    try:
+        with db.begin():
+            _lock_signup_email(db, normalized)
+            profiles = (
+                db.query(Profile)
+                .filter(func.lower(func.trim(Profile.email)) == normalized)
+                .limit(1)
+                .with_for_update()
+                .all()
+            )
+            if not profiles:
+                return None
+            profile = profiles[0]
+            if not profile.active or profile.credential is not None:
+                return None
+            email_job = _new_activation_token(db, profile, profile.email)
+        logger.info(
+            "Resend activation transaction completed in %.1f ms",
+            (perf_counter() - started_at) * 1000,
+        )
+        return email_job
+    except HTTPException:
+        raise
+    except IntegrityError as error:
+        db.rollback()
+        logger.warning("Resend activation rejected by a database constraint")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="L'envoi des instructions d'activation est temporairement indisponible.",
+        ) from error
+    except SQLAlchemyError as error:
+        db.rollback()
+        logger.error("Resend activation transaction failed (%s)", type(error).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="L'envoi des instructions d'activation est temporairement indisponible.",
+        ) from error
+
+
 def activate_account(db: Session, body: ActivateAccountRequest) -> None:
     require_auth_storage(db)
     token_digest = hash_token(body.token)
