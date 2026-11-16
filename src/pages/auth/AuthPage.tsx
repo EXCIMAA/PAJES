@@ -48,7 +48,9 @@ export function AuthPage() {
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [company, setCompany] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
@@ -84,7 +86,11 @@ export function AuthPage() {
     if (!email.trim()) return t("auth.errors.emailRequired");
     if (!isValidEmail(email)) return t("auth.errors.emailInvalid");
     if (mode === "signup") {
-      if (!fullName.trim()) return t("auth.errors.fullNameRequired");
+      if (!firstName.trim()) return t("auth.errors.firstNameRequired");
+      if (!lastName.trim()) return t("auth.errors.lastNameRequired");
+      if (!password) return t("auth.errors.passwordRequired");
+      if (password.length < 8) return t("auth.errors.signupPasswordMin");
+      if (password !== confirmPassword) return t("auth.errors.passwordMismatch");
       if (!acceptTerms) return t("auth.errors.termsRequired");
     } else {
       if (!password) return t("auth.errors.passwordRequired");
@@ -113,10 +119,12 @@ export function AuthPage() {
         if (result.error) setError(resolveError(result.error));
         else navigate("/", { replace: true });
       } else {
-        const parts = fullName.trim().split(/\s+/);
-        const firstName = parts[0] ?? "";
-        const lastName = parts.slice(1).join(" ") || firstName;
-        const result = await signUp({ email, firstName, lastName });
+        const result = await signUp({
+          email,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          password,
+        });
         if (result.error) setError(resolveError(result.error));
         else {
           setMode("signin");
@@ -293,21 +301,39 @@ export function AuthPage() {
               >
                 {mode === "signup" && (
                   <>
-                    <div>
-                      <label
-                        htmlFor="fullName"
-                        className="block text-sm font-medium text-slate-700 mb-1.5"
-                      >
-                        {t("auth.fullName")}
-                      </label>
-                      <input
-                        id="fullName"
-                        type="text"
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        className="auth-input"
-                        autoComplete="name"
-                      />
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div>
+                        <label
+                          htmlFor="firstName"
+                          className="block text-sm font-medium text-slate-700 mb-1.5"
+                        >
+                          {t("auth.firstName")}
+                        </label>
+                        <input
+                          id="firstName"
+                          type="text"
+                          value={firstName}
+                          onChange={(e) => setFirstName(e.target.value)}
+                          className="auth-input"
+                          autoComplete="given-name"
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor="lastName"
+                          className="block text-sm font-medium text-slate-700 mb-1.5"
+                        >
+                          {t("auth.lastName")}
+                        </label>
+                        <input
+                          id="lastName"
+                          type="text"
+                          value={lastName}
+                          onChange={(e) => setLastName(e.target.value)}
+                          className="auth-input"
+                          autoComplete="family-name"
+                        />
+                      </div>
                     </div>
                     <div>
                       <label
@@ -346,8 +372,7 @@ export function AuthPage() {
                   />
                 </div>
 
-                {mode === "signin" && (
-                  <div>
+                <div>
                   <label
                     htmlFor="password"
                     className="block text-sm font-medium text-slate-700 mb-1.5"
@@ -361,7 +386,7 @@ export function AuthPage() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="auth-input pr-10"
-                      autoComplete="current-password"
+                      autoComplete={mode === "signup" ? "new-password" : "current-password"}
                     />
                     <button
                       type="button"
@@ -375,6 +400,27 @@ export function AuthPage() {
                       )}
                     </button>
                   </div>
+                  {mode === "signup" && (
+                    <p className="mt-1 text-xs text-slate-500">{t("auth.passwordStrength")}</p>
+                  )}
+                </div>
+
+                {mode === "signup" && (
+                  <div>
+                    <label
+                      htmlFor="confirmPassword"
+                      className="block text-sm font-medium text-slate-700 mb-1.5"
+                    >
+                      {t("auth.confirmPassword")}
+                    </label>
+                    <input
+                      id="confirmPassword"
+                      type={showPassword ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="auth-input"
+                      autoComplete="new-password"
+                    />
                   </div>
                 )}
 

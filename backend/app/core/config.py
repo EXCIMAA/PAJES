@@ -68,6 +68,9 @@ class Settings(BaseSettings):
 
     # ── Email (transactional provider, configurable) ──────────────────────
     email_provider: Literal["smtp", "sendgrid", "postmark", "none"] = "none"
+    # The in-memory mailbox is for automated tests only. Real signup must not
+    # use it unless this flag is explicitly enabled in development.
+    email_allow_development_mailbox: bool = False
     email_from_address: str = "noreply@excimaa.com"
     email_from_name: str = "PAJES"
     smtp_host: str | None = None

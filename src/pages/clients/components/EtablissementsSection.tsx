@@ -9,6 +9,7 @@ import {
 } from "../../../lib/constants";
 import type { Etablissement, EtablissementFormData } from "../../../types";
 import { ProtectedAction } from "../../../components/auth/ProtectedAction"; // ✅ ADDED
+import { notify, useConfirm } from "../../../contexts/NotificationContext";
 
 interface Props {
   clientId: string;

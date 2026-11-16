@@ -5,6 +5,7 @@ import {
   type ActionId,
   type ModuleId,
 } from "./permissions";
+import { notify } from "../contexts/NotificationContext";
 
 function currentRole(): string | undefined {
   try {
@@ -26,9 +27,9 @@ export function assertPermission(module: ModuleId, action: ActionId): boolean {
 
   const moduleLabel = MODULE_LABELS[module] || module;
   const actionLabel = ACTION_LABELS[action] || action;
-  alert(
-    `⛔ Permission insuffisante\n\n` +
-      `Votre rôle actuel ne vous permet pas de ${actionLabel.toLowerCase()} dans le module "${moduleLabel}".`,
+  notify.warning(
+    `Votre rôle actuel ne vous permet pas de ${actionLabel.toLowerCase()} dans le module « ${moduleLabel} ».`,
+    { title: "⛔ Permission insuffisante", duration: 6000 },
   );
   return false;
 }

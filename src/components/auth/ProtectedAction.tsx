@@ -2,6 +2,7 @@
 import type { ReactNode } from "react";
 import { usePermission } from "../../hooks/usePermission";
 import type { ActionId, ModuleId } from "../../lib/permissions";
+import { notify } from "../../contexts/NotificationContext";
 
 interface ProtectedActionProps {
   module: ModuleId;
@@ -83,29 +84,26 @@ export function ProtectedAction({
 
     // Message for Demo Mode
     if (isDemo) {
-      alert(
-        `🎭 Mode démo actif\n\n` +
-          `Vous ne pouvez pas ${actionLabel} dans le module "${moduleLabel}".\n\n` +
-          `Le mode démo est en lecture seule — les modifications ne sont pas sauvegardées.`,
+      notify.info(
+        `Le mode démo est en lecture seule — vous ne pouvez pas ${actionLabel} dans le module « ${moduleLabel} ».`,
+        { title: "🎭 Mode démo actif" },
       );
       return;
     }
 
     // Message for users without a valid role
     if (hasNoRole) {
-      alert(
-        `⛔ Accès refusé\n\n` +
-          `Vous devez être associé à un rôle pour ${actionLabel} dans le module "${moduleLabel}".\n\n` +
-          `Contactez votre administrateur PAJES.`,
+      notify.warning(
+        `Vous devez être associé à un rôle pour ${actionLabel} dans le module « ${moduleLabel} ». Contactez votre administrateur PAJES.`,
+        { title: "⛔ Accès refusé", duration: 6000 },
       );
       return;
     }
 
     // Message for users with a role that lacks the specific permission
-    alert(
-      `⛔ Permission insuffisante\n\n` +
-        `Votre rôle actuel ne vous permet pas de ${actionLabel} dans le module "${moduleLabel}".\n\n` +
-        `Veuillez contacter votre administrateur si vous pensez qu'il s'agit d'une erreur.`,
+    notify.warning(
+      `Votre rôle actuel ne vous permet pas de ${actionLabel} dans le module « ${moduleLabel} ». Contactez votre administrateur si vous pensez qu'il s'agit d'une erreur.`,
+      { title: "⛔ Permission insuffisante", duration: 6000 },
     );
   };
 

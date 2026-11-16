@@ -33,6 +33,7 @@ from app.services.email_service import clear_development_mailbox
 def isolated_auth_email(monkeypatch):
     monkeypatch.setattr(settings, "app_env", "development")
     monkeypatch.setattr(settings, "email_provider", "none")
+    monkeypatch.setattr(settings, "email_allow_development_mailbox", True)
     clear_development_mailbox()
     yield
     clear_development_mailbox()

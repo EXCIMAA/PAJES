@@ -1,11 +1,11 @@
-"""End-to-end smoke check of auth against the running backend on port 8001."""
+"""End-to-end smoke check of auth against the running backend on port 8000."""
 import json
 import http.cookiejar
 import urllib.request
 import urllib.error
 import re
 
-BASE = "http://127.0.0.1:8001/api/v1"
+BASE = "http://127.0.0.1:8000/api/v1"
 EMAIL = f"e2e-test-{__import__('uuid').uuid4().hex[:8]}@example.com"
 PASSWORD = "E2eTestPass123!"
 

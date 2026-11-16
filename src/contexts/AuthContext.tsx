@@ -35,6 +35,7 @@ interface SignUpParams {
   email: string;
   firstName: string;
   lastName: string;
+  password: string;
 }
 
 interface AuthContextType {
@@ -51,7 +52,7 @@ interface AuthContextType {
   signUp: (params: SignUpParams) => Promise<{ error: string | null }>;
   activateAccount: (
     token: string,
-    password: string,
+    password?: string,
   ) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   changePassword: (
@@ -269,6 +270,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email,
     firstName,
     lastName,
+    password,
   }: SignUpParams) => {
     writeDemoFlag(false);
     setIsDemo(false);
@@ -280,6 +282,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email,
         first_name: firstName,
         last_name: lastName,
+        password,
       });
       return { error: null };
     } catch (error) {
@@ -304,7 +307,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const activateAccount = async (token: string, password: string) => {
+  const activateAccount = async (token: string, password?: string) => {
     try {
       await authApi.activateAccount(token, password);
       return { error: null };

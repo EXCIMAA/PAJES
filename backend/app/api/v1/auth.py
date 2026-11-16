@@ -24,7 +24,11 @@ from app.schemas.auth import (
     SignupRequest,
 )
 from app.services import auth_service
-from app.services.email_service import get_development_mailbox, send_auth_email
+from app.services.email_service import (
+    get_development_mailbox,
+    send_auth_email,
+    send_security_email,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -77,8 +81,10 @@ def signup(
             email_job.email,
             "PAJES — Activation du compte",
             activation_url,
-            "Utilisez ce lien pour choisir votre mot de passe PAJES.",
-            f"Ce lien expire dans {settings.activation_token_ttl_hours} heures.",
+            "Activez votre compte PAJES avec le lien ci-dessous. "
+            "Si vous avez choisi un mot de passe à l'inscription, utilisez-le pour vous connecter après activation.",
+            f"Ce lien expire dans {settings.activation_token_ttl_hours} heures et ne peut être utilisé qu'une fois.",
+            action_label="Activer mon compte",
         )
     return {"message": _GENERIC_AUTH_MESSAGE}
 
@@ -104,8 +110,9 @@ def resend_activation_instructions(
             email_job.email,
             "PAJES — Activation du compte",
             activation_url,
-            "Utilisez ce lien pour choisir votre mot de passe PAJES.",
-            f"Ce lien expire dans {settings.activation_token_ttl_hours} heures.",
+            "Activez votre compte PAJES avec le lien ci-dessous.",
+            f"Ce lien expire dans {settings.activation_token_ttl_hours} heures et ne peut être utilisé qu'une fois.",
+            action_label="Activer mon compte",
         )
     return {"message": _GENERIC_AUTH_MESSAGE}
 
@@ -128,9 +135,15 @@ def get_me(profile: Annotated[Profile, Depends(get_current_profile)]):
 def change_password(
     body: ChangePasswordRequest,
     profile: Annotated[Profile, Depends(get_current_profile)],
+    background_tasks: BackgroundTasks,
     db: Annotated[Session, Depends(get_db)],
 ):
     auth_service.change_password(db, profile.id, body.current_password, body.new_password)
+    background_tasks.add_task(
+        send_security_email,
+        profile.email,
+        "Le mot de passe de votre compte PAJES a été modifié et les sessions ouvertes ont été révoquées.",
+    )
     return {"message": "Password changed. Please log in again."}
 
 
@@ -154,8 +167,10 @@ def request_password_reset(
             "Utilisez ce lien pour définir un nouveau mot de passe PAJES.",
             (
                 "Ce lien expire dans "
-                f"{settings.password_reset_token_ttl_minutes} minutes."
+                f"{settings.password_reset_token_ttl_minutes} minutes "
+                "et ne peut être utilisé qu'une fois."
             ),
+            action_label="Réinitialiser mon mot de passe",
         )
     return {"message": _GENERIC_RESET_MESSAGE}
 
@@ -163,9 +178,17 @@ def request_password_reset(
 @router.post("/reset-password/confirm", response_model=MessageResponse)
 def confirm_password_reset(
     body: PasswordResetConfirm,
+    background_tasks: BackgroundTasks,
     db: Annotated[Session, Depends(get_db)],
 ):
-    auth_service.reset_password_with_token(db, body.token, body.new_password)
+    notified_email = auth_service.reset_password_with_token(
+        db, body.token, body.new_password
+    )
+    background_tasks.add_task(
+        send_security_email,
+        notified_email,
+        "Le mot de passe de votre compte PAJES a été réinitialisé et les sessions ouvertes ont été révoquées.",
+    )
     return {"message": "Password reset successful. Please log in."}
 
 
@@ -179,6 +202,7 @@ def development_mailbox(request: Request, email: str):
     if (
         settings.app_env != "development"
         or settings.email_provider != "none"
+        or not settings.email_allow_development_mailbox
         or not is_loopback
     ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")

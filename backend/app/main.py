@@ -1,7 +1,7 @@
 """FastAPI application entrypoint.
 
 Run locally with:
-    uv run uvicorn app.main:app --reload --port 8001
+    uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 The app is created via `create_app()` so tests can construct isolated
 instances with overridden dependencies if needed.
@@ -27,6 +27,17 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    from app.services.email_service import email_configuration_problems
+
+    problems = email_configuration_problems()
+    if problems:
+        logger.warning(
+            "Email delivery is not ready (%s). Missing or inactive settings: %s",
+            settings.email_provider,
+            ", ".join(problems),
+        )
+    else:
+        logger.info("Email provider ready: %s", settings.email_provider)
     yield
 
 

@@ -16,10 +16,12 @@ import {
   Package,
   Landmark,
   FileSpreadsheet,
+  RefreshCw,
 } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { cn, formatRelativeTime } from "../../lib/utils";
 import { useAuth } from "../../contexts/AuthContext";
+import { useConfirm, notify } from "../../contexts/NotificationContext";
 import { notificationsApi } from "../../api/notifications";
 import type { Notification } from "../../types";
 
@@ -46,21 +48,21 @@ const typeIcons: Record<string, React.FC<{ className?: string }>> = {
 };
 
 const typeColors: Record<string, string> = {
-  assignment: "text-primary-400 bg-primary-500/10",
-  alert: "text-error-400 bg-error-500/10",
-  leave: "text-warning-400 bg-warning-500/10",
-  document: "text-royal-400 bg-royal-500/10",
-  engagement: "text-emerald-400 bg-emerald-500/10",
-  team: "text-cyan-400 bg-cyan-500/10",
-  client: "text-slate-400 bg-slate-500/10",
-  invoice: "text-amber-400 bg-amber-500/10",
-  stock: "text-emerald-400 bg-emerald-500/10",
-  asset: "text-cyan-400 bg-cyan-500/10",
-  report: "text-royal-400 bg-royal-500/10",
-  review_note: "text-violet-400 bg-violet-500/10",
-  working_paper: "text-emerald-400 bg-emerald-500/10",
-  finding: "text-error-400 bg-error-500/10",
-  expense: "text-yellow-400 bg-yellow-500/10",
+  assignment: "text-royal-500 bg-royal-50 dark:bg-royal-950/40",
+  alert: "text-red-500 bg-red-50 dark:bg-red-950/40",
+  leave: "text-amber-500 bg-amber-50 dark:bg-amber-950/40",
+  document: "text-royal-500 bg-royal-50 dark:bg-royal-950/40",
+  engagement: "text-emerald-500 bg-emerald-50 dark:bg-emerald-950/40",
+  team: "text-cyan-500 bg-cyan-50 dark:bg-cyan-950/40",
+  client: "text-slate-500 bg-slate-100 dark:bg-slate-800",
+  invoice: "text-amber-500 bg-amber-50 dark:bg-amber-950/40",
+  stock: "text-emerald-500 bg-emerald-50 dark:bg-emerald-950/40",
+  asset: "text-cyan-500 bg-cyan-50 dark:bg-cyan-950/40",
+  report: "text-royal-500 bg-royal-50 dark:bg-royal-950/40",
+  review_note: "text-violet-500 bg-violet-50 dark:bg-violet-950/40",
+  working_paper: "text-emerald-500 bg-emerald-50 dark:bg-emerald-950/40",
+  finding: "text-red-500 bg-red-50 dark:bg-red-950/40",
+  expense: "text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-950/40",
 };
 
 const typeLabels: Record<string, string> = {
@@ -82,10 +84,9 @@ const typeLabels: Record<string, string> = {
   expense: "Notes de frais",
 };
 
-// ==================== COMPOSANT ====================
-
 export function NotificationsPage() {
   const { user, isDemo } = useAuth();
+  const confirm = useConfirm();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -124,7 +125,6 @@ export function NotificationsPage() {
     };
   }, [fetchNotifications]);
 
-  // ===== GESTIONNAIRES =====
   const markRead = async (id: string) => {
     try {
       const updated = await notificationsApi.markRead(id);
@@ -133,7 +133,7 @@ export function NotificationsPage() {
       );
     } catch (err) {
       console.error("Erreur marquage lu:", err);
-      setError(err instanceof Error ? err.message : "Erreur inconnue");
+      notify.error("Impossible de marquer la notification comme lue.");
     }
   };
 
@@ -141,20 +141,30 @@ export function NotificationsPage() {
     try {
       await notificationsApi.markAllRead();
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      notify.success("Toutes les notifications ont été marquées comme lues.");
     } catch (err) {
       console.error("Erreur tout marquer lu:", err);
-      setError(err instanceof Error ? err.message : "Erreur inconnue");
+      notify.error("Erreur lors de la mise à jour des notifications.");
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Supprimer cette notification ?")) return;
+    const confirmed = await confirm({
+      title: "Supprimer la notification ?",
+      message: "Cette notification sera définitivement retirée de votre centre de notifications.",
+      confirmLabel: "Supprimer",
+      variant: "danger",
+    });
+
+    if (!confirmed) return;
+
     try {
       await notificationsApi.delete(id);
       setNotifications((prev) => prev.filter((n) => n.id !== id));
+      notify.success("Notification supprimée.");
     } catch (err) {
       console.error("Erreur suppression:", err);
-      setError(err instanceof Error ? err.message : "Erreur inconnue");
+      notify.error("Impossible de supprimer cette notification.");
     }
   };
 
@@ -165,22 +175,45 @@ export function NotificationsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-40">
-        <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+      <div className="page-container space-y-4">
+        <div className="h-12 w-64 bg-slate-200 dark:bg-slate-800 rounded-xl animate-pulse" />
+        <div className="flex gap-2 mb-6 overflow-x-auto">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div
+              key={i}
+              className="h-9 w-24 bg-slate-200 dark:bg-slate-800 rounded-lg animate-pulse"
+            />
+          ))}
+        </div>
+        <div className="space-y-3">
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="h-20 w-full bg-slate-200/70 dark:bg-slate-800/50 rounded-xl animate-pulse"
+            />
+          ))}
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="card p-8 text-center">
-        <p className="text-sm text-error-500">Erreur : {error}</p>
-        <button
-          onClick={() => void fetchNotifications(true)}
-          className="btn-secondary btn-sm mt-4"
-        >
-          Réessayer
-        </button>
+      <div className="page-container">
+        <div className="rounded-2xl border border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-950/20 p-8 text-center max-w-lg mx-auto">
+          <AlertTriangle className="w-10 h-10 text-red-500 mx-auto mb-3" />
+          <h3 className="text-base font-semibold text-red-900 dark:text-red-200">
+            Erreur de chargement
+          </h3>
+          <p className="mt-1 text-sm text-red-700 dark:text-red-300">{error}</p>
+          <button
+            onClick={() => void fetchNotifications(true)}
+            className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 shadow-sm transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Réessayer</span>
+          </button>
+        </div>
       </div>
     );
   }
@@ -193,26 +226,26 @@ export function NotificationsPage() {
         actions={
           <button
             onClick={markAllRead}
-            className="btn-secondary btn-md gap-1.5"
             disabled={unreadCount === 0}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 disabled:opacity-40 transition-colors shadow-sm"
           >
-            <CheckCircle2 className="w-4 h-4" />
-            Tout marquer lu
+            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+            <span>Tout marquer lu</span>
           </button>
         }
       />
 
-      {/* Filtres */}
-      <div className="flex gap-2 mb-6 overflow-x-auto">
+      {/* Filtres par catégorie */}
+      <div className="flex gap-2 mb-6 overflow-x-auto pb-1 scrollbar-none">
         {Object.keys(typeLabels).map((t) => (
           <button
             key={t}
             onClick={() => setTypeFilter(t)}
             className={cn(
-              "px-3 py-2 rounded-lg text-sm transition-colors whitespace-nowrap",
+              "px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap",
               typeFilter === t
-                ? "bg-primary-600/15 text-primary-300 ring-1 ring-primary-500/25"
-                : "text-slate-400 hover:bg-slate-700/40",
+                ? "bg-royal-600 text-white shadow-sm"
+                : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700",
             )}
           >
             {typeLabels[t]}
@@ -220,75 +253,92 @@ export function NotificationsPage() {
         ))}
       </div>
 
-      {/* Liste */}
+      {/* Liste des notifications */}
       {filtered.length === 0 ? (
-        <div className="card p-8 text-center">
-          <Bell className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-          <p className="text-sm text-slate-400">
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-12 text-center shadow-sm">
+          <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4 text-slate-400">
+            <Bell className="w-7 h-7" />
+          </div>
+          <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+            Aucune notification
+          </h3>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
             {notifications.length === 0
-              ? "Aucune notification pour le moment."
-              : "Aucune notification ne correspond à ce filtre."}
+              ? "Vous êtes à jour ! Aucune nouvelle notification pour le moment."
+              : "Aucune notification ne correspond à ce filtre sélectionné."}
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {filtered.map((notification) => {
             const Icon = typeIcons[notification.type] ?? Bell;
             const colorClass =
-              typeColors[notification.type] ?? "text-slate-400 bg-slate-500/10";
+              typeColors[notification.type] ?? "text-slate-500 bg-slate-100 dark:bg-slate-800";
 
             return (
               <div
                 key={notification.id}
-                className={cn(
-                  "card-hover p-4 flex items-start gap-4 group cursor-pointer",
-                  !notification.read &&
-                    "border-primary-500/20 bg-primary-500/5",
-                )}
                 onClick={() => markRead(notification.id)}
+                className={cn(
+                  "p-4 rounded-xl border flex items-start gap-4 group cursor-pointer transition-all duration-200",
+                  !notification.read
+                    ? "border-royal-200 dark:border-royal-900/60 bg-royal-50/40 dark:bg-royal-950/20 shadow-xs"
+                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700",
+                )}
               >
                 <div
                   className={cn(
-                    "w-10 h-10 rounded-lg flex items-center justify-center shrink-0",
+                    "w-10 h-10 rounded-xl flex items-center justify-center shrink-0",
                     colorClass,
                   )}
                 >
                   <Icon className="w-5 h-5" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <p className="text-sm font-medium text-slate-100 truncate">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p
+                      className={cn(
+                        "text-sm font-semibold truncate",
+                        !notification.read
+                          ? "text-slate-900 dark:text-slate-100"
+                          : "text-slate-700 dark:text-slate-300",
+                      )}
+                    >
                       {notification.title}
                     </p>
                     {!notification.read && (
-                      <div className="w-2 h-2 rounded-full bg-primary-400 shrink-0" />
+                      <span className="w-2 h-2 rounded-full bg-royal-600 dark:bg-royal-400 shrink-0" />
                     )}
                   </div>
-                  <p className="text-xs text-slate-400 truncate">
+                  <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed break-words">
                     {notification.message}
                   </p>
-                  <span className="text-2xs text-slate-500">
+                  <span className="mt-1.5 inline-block text-[11px] font-medium text-slate-400 dark:text-slate-500">
                     {formatRelativeTime(notification.created_at)}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
                   {!notification.read && (
                     <button
+                      type="button"
+                      title="Marquer comme lu"
                       onClick={(e) => {
                         e.stopPropagation();
                         markRead(notification.id);
                       }}
-                      className="p-1.5 rounded hover:bg-slate-700/50 text-slate-400 hover:text-primary-300"
+                      className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 hover:text-royal-600 transition-colors"
                     >
                       <Check className="w-4 h-4" />
                     </button>
                   )}
                   <button
+                    type="button"
+                    title="Supprimer"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleDelete(notification.id);
                     }}
-                    className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-700/50 text-slate-400 hover:text-error-400"
+                    className="p-1.5 rounded-lg opacity-80 sm:opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50 dark:hover:bg-red-950/40 text-slate-400 hover:text-red-500"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -301,3 +351,5 @@ export function NotificationsPage() {
     </div>
   );
 }
+
+export default NotificationsPage;

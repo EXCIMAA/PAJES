@@ -229,8 +229,8 @@ imported-record counts only with read-only queries.
 - Frontend signup resolves to `POST /api/v1/auth/signup` (the `/api/v1` prefix
   comes from the API base URL and is not duplicated by the auth router).
 - The root Vite `.env` pointed to port 8000 while the requested backend port is
-  8001. The configured URL, API-client default, and startup documentation now
-  consistently use `http://127.0.0.1:8001/api/v1`.
+  8000. The configured URL, API-client default, and startup documentation now
+  consistently use `http://127.0.0.1:8000/api/v1`.
 - The read-only account lookup found no matching row in `public.profiles` or
   `auth.users` for the submitted address. No signup retry was sent.
 - PostgreSQL accepted read-only checks, but the existing auth-storage guard

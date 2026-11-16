@@ -1,4 +1,6 @@
 // src/hooks/useWriteGuard.ts
+import { notify } from "../contexts/NotificationContext";
+
 export function useWriteGuard() {
   const check = (): boolean => {
     try {
@@ -6,13 +8,16 @@ export function useWriteGuard() {
       const role = localStorage.getItem("pajes_user_role");
 
       if (isDemo) {
-        alert("⚠️ Mode démo : les modifications ne sont pas sauvegardées.");
+        notify.warning("Mode démo : les modifications ne sont pas sauvegardées.", {
+          title: "Mode démo",
+        });
         return false;
       }
 
       if (!role || role === "" || role === "null") {
-        alert(
-          "⚠️ Votre compte est en attente de validation. Vous ne pouvez pas encore modifier les données.",
+        notify.warning(
+          "Votre compte est en attente de validation. Vous ne pouvez pas encore modifier les données.",
+          { title: "Compte en attente", duration: 6000 },
         );
         return false;
       }

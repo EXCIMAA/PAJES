@@ -35,11 +35,15 @@ export const authApi = {
     email: string;
     first_name: string;
     last_name: string;
+    password?: string;
   }) {
     return api.post<AuthMessage>("/auth/signup", params);
   },
-  activateAccount(token: string, password: string) {
-    return api.post<AuthMessage>("/auth/activate", { token, password });
+  activateAccount(token: string, password?: string) {
+    return api.post<AuthMessage>("/auth/activate", {
+      token,
+      ...(password ? { password } : {}),
+    });
   },
   logout() {
     return api.post<AuthMessage>("/auth/logout");

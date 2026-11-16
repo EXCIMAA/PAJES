@@ -21,6 +21,7 @@ class SignupRequest(BaseModel):
     email: EmailStr
     first_name: str = Field(min_length=1, max_length=100)
     last_name: str = Field(min_length=1, max_length=100)
+    password: str | None = Field(default=None, max_length=128)
 
     @field_validator("email", mode="before")
     @classmethod
@@ -35,10 +36,28 @@ class SignupRequest(BaseModel):
             raise ValueError("Name must not be blank.")
         return normalized
 
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, value: str | None) -> str | None:
+        if value is None or value == "":
+            return None
+        if len(value) < 8:
+            raise ValueError("Password must be at least 8 characters.")
+        return value
+
 
 class ActivateAccountRequest(BaseModel):
     token: str = Field(min_length=20, max_length=256)
-    password: str = Field(min_length=8, max_length=128)
+    password: str | None = Field(default=None, max_length=128)
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, value: str | None) -> str | None:
+        if value is None or value == "":
+            return None
+        if len(value) < 8:
+            raise ValueError("Password must be at least 8 characters.")
+        return value
 
 
 class PasswordResetRequest(BaseModel):

@@ -94,7 +94,7 @@ def require_auth_storage(db: Session) -> None:
         schema = "public" if inspector.dialect.name == "postgresql" else None
         tables = set(inspector.get_table_names(schema=schema))
         views = set(inspector.get_view_names(schema=schema))
-        if "users" not in views:
+        if "users" not in tables and "users" not in views:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=AUTH_STORAGE_UNAVAILABLE,
@@ -126,22 +126,9 @@ def require_auth_storage(db: Session) -> None:
 
 
 def require_email_delivery() -> None:
-    if settings.email_provider == "none" and settings.app_env != "development":
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="L'envoi sécurisé des e-mails n'est pas configuré.",
-        )
-    if settings.email_provider == "smtp" and not settings.smtp_host:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="L'envoi sécurisé des e-mails n'est pas configuré.",
-        )
-    if settings.email_provider == "sendgrid" and not settings.sendgrid_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="L'envoi sécurisé des e-mails n'est pas configuré.",
-        )
-    if settings.email_provider == "postmark" and not settings.postmark_api_key:
+    from app.services.email_service import email_configuration_problems
+
+    if email_configuration_problems():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="L'envoi sécurisé des e-mails n'est pas configuré.",
@@ -180,6 +167,51 @@ def _lock_signup_email(db: Session, email: str) -> None:
             text("SELECT pg_advisory_xact_lock(hashtextextended(:email, 0))"),
             {"email": email},
         )
+
+
+_AMBIGUOUS = object()
+PASSWORD_REQUIRED = "Un mot de passe est requis pour activer ce compte."
+PASSWORD_MISMATCH = (
+    "Le mot de passe ne correspond pas à celui choisi à l'inscription."
+)
+
+
+def _identity_table(db: Session) -> str:
+    return "auth.users" if db.get_bind().dialect.name == "postgresql" else "auth_users"
+
+
+def _single_identity_id(db: Session, email: str) -> str | object | None:
+    rows = db.execute(
+        text(
+            f"SELECT id FROM {_identity_table(db)} "
+            "WHERE lower(trim(email)) = :email LIMIT 2"
+        ),
+        {"email": email},
+    ).all()
+    if len(rows) > 1:
+        logger.warning("Signup blocked by ambiguous existing identity")
+        return _AMBIGUOUS
+    if not rows:
+        return None
+    return str(rows[0][0])
+
+
+def _store_pending_password(db: Session, profile: Profile, password: str) -> None:
+    """Store the registration password without activating the account."""
+    if profile.credential is not None:
+        return
+    now = utcnow()
+    db.add(
+        UserCredential(
+            id=profile.id,
+            email_normalized=normalize_email(profile.email),
+            password_hash=hash_password(password),
+            is_active=False,
+            is_locked=False,
+            failed_login_count=0,
+            password_changed_at=now,
+        )
+    )
 
 
 def _new_activation_token(db: Session, profile: Profile, email: str) -> AuthEmail:
@@ -224,33 +256,24 @@ def signup(db: Session, body: SignupRequest) -> AuthEmail | None:
 
             if profiles:
                 profile = profiles[0]
-                if not profile.active or profile.credential is not None:
+                if not profile.active:
+                    return None
+                if profile.credential is not None and profile.credential.is_active:
                     return None
                 email_to_use = profile.email
             else:
-                identity_table = (
-                    "auth.users"
-                    if db.get_bind().dialect.name == "postgresql"
-                    else "auth_users"
-                )
-                existing_identity = db.execute(
-                    text(
-                        f"SELECT 1 FROM {identity_table} "
-                        "WHERE lower(trim(email)) = :email LIMIT 1"
-                    ),
-                    {"email": email},
-                ).first()
-                if existing_identity:
+                identity_id = _single_identity_id(db, email)
+                if identity_id is _AMBIGUOUS:
                     return None
-                user_id = str(uuid.uuid4())
-                if db.get_bind().dialect.name == "postgresql":
-                    db.execute(
-                        text("INSERT INTO auth.users (id, email) VALUES (:id, :email)"),
-                        {"id": user_id, "email": email},
-                    )
+                if identity_id:
+                    user_id = str(identity_id)
                 else:
+                    user_id = str(uuid.uuid4())
                     db.execute(
-                        text("INSERT INTO auth_users (id, email) VALUES (:id, :email)"),
+                        text(
+                            f"INSERT INTO {_identity_table(db)} (id, email) "
+                            "VALUES (:id, :email)"
+                        ),
                         {"id": user_id, "email": email},
                     )
                 profile = Profile(
@@ -264,6 +287,10 @@ def signup(db: Session, body: SignupRequest) -> AuthEmail | None:
                 db.flush()
                 email_to_use = email
 
+            if body.password and (
+                profile.credential is None or not profile.credential.is_active
+            ):
+                _store_pending_password(db, profile, body.password)
             email_job = _new_activation_token(db, profile, email_to_use)
         logger.info(
             "Signup transaction completed in %.1f ms",
@@ -313,7 +340,9 @@ def resend_activation(db: Session, email: str) -> AuthEmail | None:
             if not profiles:
                 return None
             profile = profiles[0]
-            if not profile.active or profile.credential is not None:
+            if not profile.active or (
+                profile.credential is not None and profile.credential.is_active
+            ):
                 return None
             email_job = _new_activation_token(db, profile, profile.email)
         logger.info(
@@ -367,11 +396,7 @@ def activate_account(db: Session, body: ActivateAccountRequest) -> None:
                 .with_for_update()
                 .first()
             )
-            if (
-                not profile
-                or not profile.active
-                or profile.credential is not None
-            ):
+            if not profile or not profile.active:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=INVALID_ACTIVATION_LINK,
@@ -382,17 +407,44 @@ def activate_account(db: Session, body: ActivateAccountRequest) -> None:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=INVALID_ACTIVATION_LINK,
                 )
-            credential = UserCredential(
-                id=profile.id,
-                email_normalized=email,
-                password_hash=hash_password(body.password),
-                is_active=True,
-                is_locked=False,
-                failed_login_count=0,
-                password_changed_at=now,
-                activated_at=now,
-            )
-            db.add(credential)
+            credential = profile.credential
+            if credential is not None and credential.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=INVALID_ACTIVATION_LINK,
+                )
+            if credential is None:
+                if not body.password:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=PASSWORD_REQUIRED,
+                    )
+                credential = UserCredential(
+                    id=profile.id,
+                    email_normalized=email,
+                    password_hash=hash_password(body.password),
+                    is_active=True,
+                    is_locked=False,
+                    failed_login_count=0,
+                    password_changed_at=now,
+                    activated_at=now,
+                )
+                db.add(credential)
+            else:
+                if not body.password:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=PASSWORD_REQUIRED,
+                    )
+                if not verify_password(
+                    body.password, credential.password_hash
+                ):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=PASSWORD_MISMATCH,
+                    )
+                credential.is_active = True
+                credential.activated_at = now
             activation.used_at = now
             db.query(AccountActivationToken).filter(
                 AccountActivationToken.user_id == profile.id,
@@ -598,7 +650,7 @@ def reset_password_with_token(
     db: Session,
     token: str,
     new_password: str,
-) -> None:
+) -> str:
     require_auth_storage(db)
     token_digest = hash_token(token)
     now = utcnow()
@@ -650,6 +702,11 @@ def reset_password_with_token(
                 AuthSession.user_id == reset.user_id,
                 AuthSession.revoked_at.is_(None),
             ).update({AuthSession.revoked_at: now}, synchronize_session=False)
+            profile = (
+                db.query(Profile).filter(Profile.id == reset.user_id).one()
+            )
+            notified_email = profile.email
+        return notified_email
     except HTTPException:
         raise
     except SQLAlchemyError as error:

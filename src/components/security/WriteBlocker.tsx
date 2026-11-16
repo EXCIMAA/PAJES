@@ -1,6 +1,7 @@
 // src/components/security/WriteBlocker.tsx
 import { useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
+import { notify } from "../../contexts/NotificationContext";
 
 const DEMO_KEY = "pajes_demo_mode";
 const USER_ROLE_KEY = "pajes_user_role";
@@ -59,26 +60,13 @@ function isBlockedUser(): boolean {
 }
 
 // ============================================================
-// BILINGUAL ALERT
+// BLOCKED NOTIFICATION
 // ============================================================
 function showBlockedAlert() {
-  const message = [
-    "⛔ Accès refusé / Access denied",
-    "",
-    "🇫🇷 FRANÇAIS",
-    "Vous devez être associé à un rôle avant d'effectuer cette action.",
-    "Votre compte possède actuellement le rôle « user » qui ne permet aucune opération.",
-    "",
-    "Contactez votre administrateur PAJES pour qu'il vous attribue un rôle.",
-    "",
-    "🇬🇧 ENGLISH",
-    "You must be associated with a role before performing this action.",
-    'Your account currently has the role "user" which does not allow any operation.',
-    "",
-    "Contact your PAJES administrator to assign you a role.",
-  ].join("\n");
-
-  alert(message);
+  notify.warning(
+    "Votre compte possède le rôle « user » qui ne permet aucune opération. Contactez votre administrateur PAJES pour qu'il vous attribue un rôle.",
+    { title: "⛔ Accès refusé", duration: 7000 },
+  );
 }
 
 // ============================================================

@@ -5,9 +5,9 @@ protected-database migration not approved or executed.
 
 ## Current status
 
-- The frontend signup endpoint is `/api/v1/auth/signup`; the API base URL,
-  client fallback, and startup documentation target port 8001. The `/api/v1`
-  prefix is not duplicated.
+- The frontend signup endpoint is `/api/v1/auth/signup`. `VITE_API_BASE_URL`,
+  the API client fallback, and the startup commands use
+  `http://127.0.0.1:8000/api/v1`. The `/api/v1` prefix is not duplicated.
 - Authentication code now uses separate `user_credentials`, `auth_sessions`,
   `account_activation_tokens`, and `password_reset_tokens` tables linked to
   `public.profiles.id`. It preserves existing profile UUIDs, names, roles, and

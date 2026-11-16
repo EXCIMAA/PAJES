@@ -16,6 +16,7 @@ import { ActivateAccountPage } from "./pages/auth/ActivateAccountPage";
 import { ResetPasswordPage } from "./pages/auth/ResetPasswordPage";
 import { PendingApprovalPage } from "./pages/PendingApprovalPage";
 import { DemoProvider } from "./contexts/DemoContext";
+import { NotificationProvider } from "./contexts/NotificationContext";
 import { WriteBlocker } from "./components/security/WriteBlocker";
 
 // ========== FALLBACK ==========
@@ -180,8 +181,9 @@ function App() {
   return (
     <BrowserRouter>
       <DemoProvider>
-        <WriteBlocker />
-        <Routes>
+        <NotificationProvider>
+          <WriteBlocker />
+          <Routes>
           {/* Auth */}
           <Route path="/login" element={<AuthPage />} />
           <Route path="/legal" element={<LegalCenterPage />} />
@@ -265,6 +267,7 @@ function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
+        </NotificationProvider>
       </DemoProvider>
     </BrowserRouter>
   );
