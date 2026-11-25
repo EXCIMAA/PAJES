@@ -133,7 +133,9 @@ export function AppLayout({ children }: AppLayoutProps) {
             <span className="module-context-dot" />
             <span className="text-app-tertiary">Espace sécurisé PAJES</span>
           </div>
-          {children}
+          <div key={`${location.pathname}${location.search}`} className="page-transition">
+            {children}
+          </div>
         </div>
       </main>
     </div>
