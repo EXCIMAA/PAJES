@@ -133,6 +133,105 @@
     text-transform: uppercase;
   }
 
+  .workspace-visual {
+    pointer-events: none;
+    position: fixed;
+    z-index: 0;
+    top: 68px;
+    right: 0;
+    left: var(--sidebar-width);
+    height: 240px;
+    overflow: hidden;
+    opacity: 0.72;
+    transition: background 0.45s ease, left 0.3s ease;
+    background: radial-gradient(circle at 80% 25%, rgb(37 99 235 / 0.12), transparent 34%), linear-gradient(180deg, rgb(232 240 255 / 0.75), transparent 88%);
+  }
+
+  .workspace-visual::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, transparent 8%, var(--color-bg) 92%);
+  }
+
+  .workspace-orbit {
+    position: absolute;
+    border: 1px solid rgb(37 99 235 / 0.16);
+    border-radius: 999px;
+    transform: rotate(-18deg);
+  }
+
+  .workspace-orbit-one {
+    top: -110px;
+    right: 8%;
+    width: 460px;
+    height: 250px;
+  }
+
+  .workspace-orbit-two {
+    top: -72px;
+    right: 15%;
+    width: 320px;
+    height: 180px;
+    border-color: rgb(6 182 212 / 0.2);
+  }
+
+  .workspace-visual-mark {
+    position: absolute;
+    top: 72px;
+    right: 12%;
+    display: grid;
+    place-items: center;
+    width: 78px;
+    height: 78px;
+    border: 1px solid rgb(255 255 255 / 0.8);
+    border-radius: 24px;
+    color: rgb(37 99 235 / 0.72);
+    background: rgb(255 255 255 / 0.48);
+    box-shadow: 0 16px 40px rgb(37 99 235 / 0.1);
+    transform: rotate(9deg);
+  }
+
+  .workspace-visual-cyan { background: radial-gradient(circle at 80% 25%, rgb(6 182 212 / 0.14), transparent 34%), linear-gradient(180deg, rgb(230 250 255 / 0.8), transparent 88%); }
+  .workspace-visual-emerald, .workspace-visual-teal { background: radial-gradient(circle at 80% 25%, rgb(16 185 129 / 0.13), transparent 34%), linear-gradient(180deg, rgb(232 252 244 / 0.8), transparent 88%); }
+  .workspace-visual-amber, .workspace-visual-orange { background: radial-gradient(circle at 80% 25%, rgb(245 158 11 / 0.13), transparent 34%), linear-gradient(180deg, rgb(255 248 231 / 0.8), transparent 88%); }
+  .workspace-visual-rose { background: radial-gradient(circle at 80% 25%, rgb(244 63 94 / 0.11), transparent 34%), linear-gradient(180deg, rgb(255 240 244 / 0.8), transparent 88%); }
+  .workspace-visual-violet, .workspace-visual-indigo { background: radial-gradient(circle at 80% 25%, rgb(37 99 235 / 0.14), transparent 34%), linear-gradient(180deg, rgb(235 241 255 / 0.8), transparent 88%); }
+  .workspace-visual-slate { background: radial-gradient(circle at 80% 25%, rgb(100 116 139 / 0.14), transparent 34%), linear-gradient(180deg, rgb(241 245 249 / 0.8), transparent 88%); }
+
+  .module-context {
+    position: relative;
+    z-index: 1;
+    color: var(--color-text-secondary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .module-context-icon {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
+    color: #1d4ed8;
+    background: #dbeafe;
+  }
+
+  .module-context-emerald, .module-context-teal { color: #047857; background: #d1fae5; }
+  .module-context-amber, .module-context-orange { color: #b45309; background: #fef3c7; }
+  .module-context-rose { color: #be123c; background: #ffe4e6; }
+  .module-context-violet, .module-context-indigo { color: #1d4ed8; background: #dbeafe; }
+  .module-context-slate { color: #475569; background: #e2e8f0; }
+
+  .module-context-dot {
+    width: 4px;
+    height: 4px;
+    margin-left: 4px;
+    border-radius: 999px;
+    background: var(--color-border-light);
+  }
+
   .card-hover {
     @apply card transition-all duration-200;
   }
@@ -480,6 +579,20 @@
 }
 
 @media (max-width: 767px) {
+  .workspace-visual {
+    left: 0;
+    height: 190px;
+    opacity: 0.5;
+  }
+
+  .workspace-visual-mark {
+    top: 52px;
+    right: 8%;
+    width: 58px;
+    height: 58px;
+    border-radius: 18px;
+  }
+
   .page-container {
     width: 100%;
   }
