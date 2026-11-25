@@ -146,17 +146,17 @@ export function Sidebar({
         )}
         aria-label={t("navigation.principal")}
       >
-        <div className="flex items-center justify-between h-16 px-4 border-b border-app">
+        <div className="flex items-center justify-between h-[76px] px-4 border-b border-white/10">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-primary-500 flex items-center justify-center shrink-0 shadow-sm shadow-primary-500/30">
-              <Hexagon className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-300 via-primary-500 to-primary-700 flex items-center justify-center shrink-0 shadow-lg shadow-primary-950/40">
+              <Hexagon className="w-5 h-5 text-white" strokeWidth={2.5} />
             </div>
             {!isCollapsed && (
               <div className="animate-fade-in min-w-0">
-                <h1 className="text-base font-semibold text-app-primary tracking-tight">
+                <h1 className="text-[17px] font-bold text-white tracking-tight">
                   {t("app.title")}
                 </h1>
-                <p className="text-2xs text-app-tertiary tracking-wide">
+                <p className="text-[10px] text-slate-400 tracking-[0.14em] uppercase">
                   EXCIMAA
                 </p>
               </div>
@@ -172,11 +172,11 @@ export function Sidebar({
           </button>
         </div>
 
-      <nav className="flex-1 py-5 px-3 overflow-y-auto" aria-label={t("navigation.principal")}>
+      <nav className="flex-1 py-6 px-3 overflow-y-auto" aria-label={t("navigation.principal")}>
         {visibleNavItems.map((section, si) => (
           <div key={section.section} className={cn(si > 0 && "mt-6")}>
             {!isCollapsed && (
-              <p className="px-3 mb-2 text-2xs font-medium text-app-tertiary uppercase tracking-widest">
+              <p className="px-3 mb-2 text-[10px] font-bold text-slate-500 uppercase tracking-[0.16em]">
                 {sectionLabels[section.section.toLowerCase()] ??
                   section.section}
               </p>
@@ -197,10 +197,10 @@ export function Sidebar({
                         onNavigate();
                       }}
                       className={cn(
-                        "w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-150 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
+                        "nav-item w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-200 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
                         isActive
-                          ? "bg-primary-400/15 text-white"
-                          : "text-app-secondary hover:bg-app-tertiary hover:text-app-primary",
+                          ? "nav-item-active text-white"
+                          : "text-app-secondary hover:bg-white/[0.08] hover:text-white",
                       )}
                       aria-current={isActive ? "page" : undefined}
                       title={isCollapsed ? item.label : undefined}
@@ -256,10 +256,10 @@ export function Sidebar({
           }}
           data-public-navigation="true"
           className={cn(
-            "w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150",
+            "w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-150",
             location.pathname === "/legal"
-              ? "bg-primary-400/15 text-white"
-              : "text-app-secondary hover:bg-app-tertiary hover:text-app-primary",
+              ? "nav-item-active text-white"
+              : "text-app-secondary hover:bg-white/[0.08] hover:text-white",
           )}
           aria-current={location.pathname === "/legal" ? "page" : undefined}
           title={isCollapsed ? t("navigation.legal") : undefined}

@@ -65,13 +65,13 @@ export function AppLayout({ children }: AppLayoutProps) {
         className={cn(
           "min-h-[100dvh] transition-all duration-300",
           isDemo
-            ? "pt-[calc(6rem+env(safe-area-inset-top))]"
-            : "pt-[calc(3.5rem+env(safe-area-inset-top))]",
+            ? "pt-[calc(6.5rem+env(safe-area-inset-top))]"
+            : "pt-[calc(4.25rem+env(safe-area-inset-top))]",
           sidebarCollapsed ? "ml-0 md:ml-[72px]" : "ml-0 md:ml-[260px]",
         )}
       >
         <DatabaseBanner />
-        <div className="mx-auto max-w-[1600px] px-3 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 sm:px-6 sm:pt-6">
+        <div className="mx-auto max-w-[1600px] px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-5 sm:px-8 sm:pt-8">
           {children}
         </div>
       </main>

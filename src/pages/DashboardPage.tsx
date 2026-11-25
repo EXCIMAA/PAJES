@@ -9,6 +9,7 @@ import type {
 } from "../api/businessIntelligence";
 import { StatCard } from "../components/ui/StatCard";
 import { QuickActions } from "../components/dashboard/QuickActions";
+import { ArrowUpRight, CalendarDays, Sparkles } from "lucide-react";
 import {
   RevenueChart,
   CategoryChart,
@@ -153,14 +154,32 @@ export function DashboardPage() {
 
   return (
     <div className="page-container">
-      <div className="mb-7 sm:mb-8">
-        <h1 className="text-2xl sm:text-3xl font-semibold text-app-primary tracking-tight">
-          {t("navigation.dashboard")}
-        </h1>
-        <p className="text-sm text-app-secondary mt-1.5">
-          {t("dashboard.welcome")}
-        </p>
-      </div>
+      <section className="relative mb-7 overflow-hidden rounded-2xl border border-primary-200/70 bg-gradient-to-br from-[#eaf2ff] via-white to-[#f2f6ff] p-5 shadow-sm dark:border-primary-900/60 dark:from-primary-950/70 dark:via-slate-900 dark:to-slate-900 sm:p-7">
+        <div className="pointer-events-none absolute -right-10 -top-16 h-56 w-56 rounded-full bg-primary-400/15 blur-3xl" />
+        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary-200 bg-white/75 px-3 py-1 text-xs font-semibold text-primary-700 dark:border-primary-800 dark:bg-slate-900/60 dark:text-primary-300">
+              <Sparkles className="h-3.5 w-3.5" />
+              Pilotage du cabinet
+            </div>
+            <h1 className="max-w-2xl text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-3xl">
+              {t("dashboard.welcome")}
+            </h1>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+              Retrouvez vos indicateurs clés, vos priorités et les dernières activités de votre équipe au même endroit.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-2 rounded-xl border border-white/80 bg-white/80 px-3 py-2 text-xs font-medium text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300">
+              <CalendarDays className="h-4 w-4 text-primary-600" />
+              {new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric" }).format(new Date())}
+            </div>
+            <button onClick={() => navigate("/reports")} className="btn-primary btn-md rounded-xl shadow-lg shadow-primary-600/20">
+              Voir les rapports <ArrowUpRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </section>
 
       {error && (
         <div
@@ -175,7 +194,14 @@ export function DashboardPage() {
         <p className="text-sm text-app-secondary mb-6">{t("common.loading")}</p>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 mb-8">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <p className="page-eyebrow">Vue synthétique</p>
+          <h2 className="mt-1 text-lg font-bold text-app-primary">Les chiffres du cabinet</h2>
+        </div>
+        <span className="hidden text-xs text-app-tertiary sm:block">Données actualisées automatiquement</span>
+      </div>
+      <div className="grid grid-cols-1 gap-4 mb-8 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {kpiData.map((kpi) => (
           <StatCard
             key={kpi.id}
@@ -185,14 +211,14 @@ export function DashboardPage() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+      <div className="mb-8 grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <RevenueChart data={dashboard?.charts.engagements ?? []} />
         </div>
         <FindingsTrendChart data={dashboard?.charts.findings ?? []} />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-8">
+      <div className="mb-8 grid grid-cols-1 gap-5 xl:grid-cols-3">
         <CategoryChart data={dashboard?.charts.review_notes ?? []} />
         <TopClientsTable
           data={dashboard?.top_clients ?? []}

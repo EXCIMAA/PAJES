@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Menu, LogOut, Settings, ChevronDown, Search } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../contexts/AuthContext";
@@ -29,6 +29,7 @@ export function TopBar({
   isDemo,
 }: TopBarProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { signOut, user } = useAuth();
   const { t } = useTranslation();
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -45,26 +46,32 @@ export function TopBar({
   return (
     <header
       className={cn(
-        "fixed right-0 z-30 h-14 glass border-b border-app transition-[left,top] duration-300",
+        "fixed right-0 z-30 h-[68px] glass border-b border-app transition-[left,top] duration-300 shadow-[0_4px_18px_rgba(15,35,68,0.04)]",
         isDemo
           ? "top-[calc(2.5rem+env(safe-area-inset-top))]"
           : "top-[env(safe-area-inset-top)]",
         sidebarCollapsed ? "left-0 md:left-[72px]" : "left-0 md:left-[260px]",
       )}
     >
-      <div className="flex h-full items-center justify-between px-2 sm:px-4">
+      <div className="flex h-full items-center justify-between px-3 sm:px-6">
         {/* Left: menu + search */}
         <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-3">
           <button
             onClick={onMenuToggle}
-            className="p-1.5 rounded-lg hover:bg-app-tertiary text-app-secondary hover:text-app-primary transition-colors shrink-0"
+            className="p-2 rounded-xl hover:bg-app-tertiary text-app-secondary hover:text-app-primary transition-colors shrink-0"
             aria-label={t("navigation.toggleSidebar")}
           >
             <Menu className="w-5 h-5" />
           </button>
 
-          {/* Global search (desktop) */}
-          <div className="hidden sm:block flex-1 max-w-md">
+          <div className="hidden lg:flex items-center gap-3 min-w-0">
+            <div className="h-7 w-px bg-app border-app" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-app-tertiary">Espace de travail</p>
+              <p className="truncate text-sm font-semibold text-app-primary">{location.pathname === "/" ? "Vue d’ensemble" : "PAJES"}</p>
+            </div>
+          </div>
+          <div className="hidden sm:block flex-1 max-w-md ml-4">
             <GlobalSearch />
           </div>
 
@@ -80,11 +87,13 @@ export function TopBar({
 
         {/* Right: notifications + language + user menu */}
         <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
-          <LanguageSwitcher />
-          <ThemeToggle />
+          <div className="hidden sm:flex items-center gap-1 rounded-xl border border-app bg-app-tertiary/50 p-1">
+            <LanguageSwitcher />
+            <ThemeToggle />
+          </div>
           <button
             onClick={() => navigate("/notifications")}
-            className="relative p-2 rounded-lg hover:bg-app-tertiary transition-colors"
+            className="relative p-2.5 rounded-xl hover:bg-app-tertiary transition-colors"
             aria-label="Notifications"
           >
             <NotificationBadge iconClassName="w-5 h-5 text-app-secondary" />
@@ -93,11 +102,11 @@ export function TopBar({
           <div className="relative">
             <button
               onClick={() => setShowUserMenu(!showUserMenu)}
-              className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-app-tertiary transition-colors"
+              className="flex items-center gap-2 rounded-xl p-1.5 hover:bg-app-tertiary transition-colors"
               aria-expanded={showUserMenu}
               aria-label={displayName}
             >
-              <div className="w-8 h-8 rounded-full bg-primary-600/20 flex items-center justify-center text-sm font-medium text-primary-600 dark:text-primary-300">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center text-xs font-bold text-white shadow-md shadow-primary-500/20">
                 {initials}
               </div>
               <ChevronDown

@@ -79,7 +79,7 @@ export function StatCard({
   return (
     <div
       className={cn(
-        "card-hover p-5 transition-all duration-200 group hover:-translate-y-0.5",
+        "card-hover relative overflow-hidden p-5 transition-all duration-200 group hover:-translate-y-1", 
         colors.glow,
         className,
       )}
