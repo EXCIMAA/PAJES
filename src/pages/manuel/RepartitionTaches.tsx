@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import * as XLSX from "xlsx";
+import { useNotification } from "../../contexts/NotificationContext";
 
 // ==================== STYLED COMPONENTS ====================
 
@@ -180,13 +181,14 @@ const RepartitionTaches: React.FC = () => {
   const [lignes, setLignes] = useState<LigneTache[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
+  const { notify } = useNotification();
 
   useEffect(() => {
     const fetchClients = async () => {
-      const { data } = await supabase
-        .from("clients")
-        .select("id, client_code, name")
-        .order("name");
+      const data = await dbApi.list<Client>("clients", {
+        orderBy: "name",
+        limit: 500,
+      });
       if (data) setClients(data);
       if (data && data.length > 0) {
         setSelectedClientId(data[0].id);
@@ -201,13 +203,13 @@ const RepartitionTaches: React.FC = () => {
     if (!selectedClientId) return;
     const fetchData = async () => {
       setLoading(true);
-      const { data: params } = await supabase
-        .from("repartition_parametres")
-        .select("*")
-        .eq("client_id", selectedClientId)
-        .single();
+      const paramsData = await dbApi.list("repartition_parametres", {
+        filters: { client_id: selectedClientId },
+        limit: 500,
+      });
+      const params = paramsData[0] || null;
       if (params) {
-        setParametres(params);
+        setParametres(params as any);
       } else {
         setParametres({
           client_id: selectedClientId,
@@ -222,11 +224,11 @@ const RepartitionTaches: React.FC = () => {
           niveau_saisie_piece: "N4",
         });
       }
-      const { data: lignesData } = await supabase
-        .from("repartition_lignes")
-        .select("*")
-        .eq("client_id", selectedClientId)
-        .order("ordre", { ascending: true });
+      const lignesData = await dbApi.list<LigneTache>("repartition_lignes", {
+        filters: { client_id: selectedClientId },
+        orderBy: "ordre",
+        limit: 500,
+      });
       if (lignesData && lignesData.length > 0) {
         setLignes(lignesData);
       } else {
@@ -312,31 +314,37 @@ const RepartitionTaches: React.FC = () => {
     if (!selectedClientId || !parametres) return;
     setSaving(true);
     try {
-      const { data: existingParams } = await supabase
-        .from("repartition_parametres")
-        .select("id")
-        .eq("client_id", selectedClientId)
-        .single();
+      const existingParamsData = await dbApi.list("repartition_parametres", {
+        filters: { client_id: selectedClientId },
+        limit: 500,
+      });
+      const existingParams = existingParamsData[0] || null;
       if (existingParams) {
-        await supabase
-          .from("repartition_parametres")
-          .update(parametres)
-          .eq("client_id", selectedClientId);
+        await dbApi.update(
+          "repartition_parametres",
+          (existingParams as any).id,
+          parametres as any,
+        );
       } else {
-        await supabase.from("repartition_parametres").insert([parametres]);
+        await dbApi.create("repartition_parametres", parametres as any);
       }
-      await supabase
-        .from("repartition_lignes")
-        .delete()
-        .eq("client_id", selectedClientId);
+      const existingLignes = await dbApi.list("repartition_lignes", {
+        filters: { client_id: selectedClientId },
+        limit: 500,
+      });
+      for (const row of existingLignes) {
+        await dbApi.remove("repartition_lignes", (row as any).id);
+      }
       if (lignes.length > 0) {
         const lignesToInsert = lignes.map(({ id, ...rest }) => rest);
-        await supabase.from("repartition_lignes").insert(lignesToInsert);
+        for (const ligne of lignesToInsert) {
+          await dbApi.create("repartition_lignes", ligne as any);
+        }
       }
-      alert("Données sauvegardées !");
+      notify.success("Données sauvegardées !");
     } catch (err: any) {
       console.error(err);
-      alert("Erreur : " + err.message);
+      notify.error("Erreur : " + err.message);
     } finally {
       setSaving(false);
     }
@@ -346,17 +354,17 @@ const RepartitionTaches: React.FC = () => {
     if (!selectedClientId) return;
     setLoading(true);
     try {
-      const { data: params } = await supabase
-        .from("repartition_parametres")
-        .select("*")
-        .eq("client_id", selectedClientId)
-        .single();
-      if (params) setParametres(params);
-      const { data: lignesData } = await supabase
-        .from("repartition_lignes")
-        .select("*")
-        .eq("client_id", selectedClientId)
-        .order("ordre", { ascending: true });
+      const paramsData = await dbApi.list("repartition_parametres", {
+        filters: { client_id: selectedClientId },
+        limit: 500,
+      });
+      const params = paramsData[0] || null;
+      if (params) setParametres(params as any);
+      const lignesData = await dbApi.list<LigneTache>("repartition_lignes", {
+        filters: { client_id: selectedClientId },
+        orderBy: "ordre",
+        limit: 500,
+      });
       if (lignesData) setLignes(lignesData);
     } catch (err) {
       console.error(err);

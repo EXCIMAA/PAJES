@@ -1,7 +1,8 @@
 """Server-side permission enforcement — FastAPI dependencies.
 
-These dependencies are the backend equivalent of the frontend proxy in
-src/lib/supabase.ts. Every sensitive endpoint must use one of them.
+These dependencies are the backend equivalent of the frontend permission
+checks in src/lib/permissions.ts. Every sensitive endpoint must use one
+of them.
 """
 
 from __future__ import annotations

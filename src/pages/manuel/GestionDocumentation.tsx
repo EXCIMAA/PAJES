@@ -1,8 +1,12 @@
 // src/pages/manuel/GestionDocumentation.tsx
 import React, { useEffect, useState, useRef } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import * as XLSX from "xlsx";
+import {
+  useNotification,
+  useConfirm,
+} from "../../contexts/NotificationContext";
 
 // ==================== STYLES ====================
 const Container = styled.div`
@@ -281,6 +285,8 @@ const GestionDocumentation: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const { notify } = useNotification();
+  const confirm = useConfirm();
 
   // États pour l'import
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -295,16 +301,16 @@ const GestionDocumentation: React.FC = () => {
     try {
       setLoading(true);
       const [interneRes, techniqueRes, archivageRes] = await Promise.all([
-        supabase.from("doc_interne").select("*").order("nom"),
-        supabase.from("doc_technique").select("*").order("nom"),
-        supabase.from("archivage").select("*").order("nom"),
+        dbApi.list<DocInterne>("doc_interne", { orderBy: "nom", limit: 500 }),
+        dbApi.list<DocTechnique>("doc_technique", {
+          orderBy: "nom",
+          limit: 500,
+        }),
+        dbApi.list<Archivage>("archivage", { orderBy: "nom", limit: 500 }),
       ]);
-      if (interneRes.error) throw interneRes.error;
-      if (techniqueRes.error) throw techniqueRes.error;
-      if (archivageRes.error) throw archivageRes.error;
-      setDocInterne(interneRes.data || []);
-      setDocTechnique(techniqueRes.data || []);
-      setArchivage(archivageRes.data || []);
+      setDocInterne(interneRes || []);
+      setDocTechnique(techniqueRes || []);
+      setArchivage(archivageRes || []);
     } catch (err: any) {
       console.error(err);
       setError(err.message);
@@ -320,30 +326,23 @@ const GestionDocumentation: React.FC = () => {
   // ===== DOCUMENTATION INTERNE =====
   const addInterne = async () => {
     if (!newInterne.nom) {
-      alert("Veuillez renseigner le nom du document.");
+      notify.error("Veuillez renseigner le nom du document.");
       return;
     }
     try {
       setSaving(true);
-      const { data, error } = await supabase
-        .from("doc_interne")
-        .insert([
-          {
-            nom: newInterne.nom || "",
-            version: newInterne.version || "",
-            domaine: newInterne.domaine || "",
-            format: newInterne.format || "",
-            auteur: newInterne.auteur || "",
-            lieu_classement: newInterne.lieu_classement || "",
-          },
-        ])
-        .select()
-        .single();
-      if (error) throw error;
+      const data = await dbApi.create<DocInterne>("doc_interne", {
+        nom: newInterne.nom || "",
+        version: newInterne.version || "",
+        domaine: newInterne.domaine || "",
+        format: newInterne.format || "",
+        auteur: newInterne.auteur || "",
+        lieu_classement: newInterne.lieu_classement || "",
+      });
       setDocInterne([...docInterne, data]);
       setNewInterne({});
     } catch (err: any) {
-      alert("Erreur ajout: " + err.message);
+      notify.error("Erreur ajout: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -356,29 +355,32 @@ const GestionDocumentation: React.FC = () => {
   ) => {
     try {
       setSaving(true);
-      const { error } = await supabase
-        .from("doc_interne")
-        .update({ [field]: value })
-        .eq("id", id);
-      if (error) throw error;
+      await dbApi.update("doc_interne", id, { [field]: value });
       setDocInterne(
         docInterne.map((d) => (d.id === id ? { ...d, [field]: value } : d)),
       );
     } catch (err: any) {
-      alert("Erreur mise à jour: " + err.message);
+      notify.error("Erreur mise à jour: " + err.message);
     } finally {
       setSaving(false);
     }
   };
 
   const deleteInterne = async (id: string) => {
-    if (!window.confirm("Supprimer ce document ?")) return;
+    const confirmed = await confirm({
+      title: "Supprimer ce document ?",
+      message: "Cette action est irréversible.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
       setSaving(true);
-      await supabase.from("doc_interne").delete().eq("id", id);
+      await dbApi.remove("doc_interne", id);
       setDocInterne(docInterne.filter((d) => d.id !== id));
     } catch (err: any) {
-      alert("Erreur suppression: " + err.message);
+      notify.error("Erreur suppression: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -387,31 +389,24 @@ const GestionDocumentation: React.FC = () => {
   // ===== DOCUMENTATION TECHNIQUE =====
   const addTechnique = async () => {
     if (!newTechnique.nom) {
-      alert("Veuillez renseigner le nom du document.");
+      notify.error("Veuillez renseigner le nom du document.");
       return;
     }
     try {
       setSaving(true);
-      const { data, error } = await supabase
-        .from("doc_technique")
-        .insert([
-          {
-            nom: newTechnique.nom || "",
-            support: newTechnique.support || "",
-            mise_a_jour: newTechnique.mise_a_jour || "",
-            lieu_classement: newTechnique.lieu_classement || "",
-            theme: newTechnique.theme || "",
-            site_adresse: newTechnique.site_adresse || "",
-            site_mot_de_passe: newTechnique.site_mot_de_passe || "",
-          },
-        ])
-        .select()
-        .single();
-      if (error) throw error;
+      const data = await dbApi.create<DocTechnique>("doc_technique", {
+        nom: newTechnique.nom || "",
+        support: newTechnique.support || "",
+        mise_a_jour: newTechnique.mise_a_jour || "",
+        lieu_classement: newTechnique.lieu_classement || "",
+        theme: newTechnique.theme || "",
+        site_adresse: newTechnique.site_adresse || "",
+        site_mot_de_passe: newTechnique.site_mot_de_passe || "",
+      });
       setDocTechnique([...docTechnique, data]);
       setNewTechnique({});
     } catch (err: any) {
-      alert("Erreur ajout: " + err.message);
+      notify.error("Erreur ajout: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -424,29 +419,32 @@ const GestionDocumentation: React.FC = () => {
   ) => {
     try {
       setSaving(true);
-      const { error } = await supabase
-        .from("doc_technique")
-        .update({ [field]: value })
-        .eq("id", id);
-      if (error) throw error;
+      await dbApi.update("doc_technique", id, { [field]: value });
       setDocTechnique(
         docTechnique.map((d) => (d.id === id ? { ...d, [field]: value } : d)),
       );
     } catch (err: any) {
-      alert("Erreur mise à jour: " + err.message);
+      notify.error("Erreur mise à jour: " + err.message);
     } finally {
       setSaving(false);
     }
   };
 
   const deleteTechnique = async (id: string) => {
-    if (!window.confirm("Supprimer ce document ?")) return;
+    const confirmed = await confirm({
+      title: "Supprimer ce document ?",
+      message: "Cette action est irréversible.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
       setSaving(true);
-      await supabase.from("doc_technique").delete().eq("id", id);
+      await dbApi.remove("doc_technique", id);
       setDocTechnique(docTechnique.filter((d) => d.id !== id));
     } catch (err: any) {
-      alert("Erreur suppression: " + err.message);
+      notify.error("Erreur suppression: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -455,33 +453,26 @@ const GestionDocumentation: React.FC = () => {
   // ===== ARCHIVAGE =====
   const addArchivage = async () => {
     if (!newArchivage.nom) {
-      alert("Veuillez renseigner le nom du document.");
+      notify.error("Veuillez renseigner le nom du document.");
       return;
     }
     try {
       setSaving(true);
-      const { data, error } = await supabase
-        .from("archivage")
-        .insert([
-          {
-            nom: newArchivage.nom || "",
-            format: newArchivage.format || "",
-            quand_archiver: newArchivage.quand_archiver || "",
-            duree: newArchivage.duree || "",
-            responsable: newArchivage.responsable || "",
-            lieu_stockage: newArchivage.lieu_stockage || "",
-            reference: newArchivage.reference || "",
-            type_destruction: newArchivage.type_destruction || "",
-            metier: newArchivage.metier || "",
-          },
-        ])
-        .select()
-        .single();
-      if (error) throw error;
+      const data = await dbApi.create<Archivage>("archivage", {
+        nom: newArchivage.nom || "",
+        format: newArchivage.format || "",
+        quand_archiver: newArchivage.quand_archiver || "",
+        duree: newArchivage.duree || "",
+        responsable: newArchivage.responsable || "",
+        lieu_stockage: newArchivage.lieu_stockage || "",
+        reference: newArchivage.reference || "",
+        type_destruction: newArchivage.type_destruction || "",
+        metier: newArchivage.metier || "",
+      });
       setArchivage([...archivage, data]);
       setNewArchivage({});
     } catch (err: any) {
-      alert("Erreur ajout: " + err.message);
+      notify.error("Erreur ajout: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -494,29 +485,32 @@ const GestionDocumentation: React.FC = () => {
   ) => {
     try {
       setSaving(true);
-      const { error } = await supabase
-        .from("archivage")
-        .update({ [field]: value })
-        .eq("id", id);
-      if (error) throw error;
+      await dbApi.update("archivage", id, { [field]: value });
       setArchivage(
         archivage.map((d) => (d.id === id ? { ...d, [field]: value } : d)),
       );
     } catch (err: any) {
-      alert("Erreur mise à jour: " + err.message);
+      notify.error("Erreur mise à jour: " + err.message);
     } finally {
       setSaving(false);
     }
   };
 
   const deleteArchivage = async (id: string) => {
-    if (!window.confirm("Supprimer cette ligne ?")) return;
+    const confirmed = await confirm({
+      title: "Supprimer cette ligne ?",
+      message: "Cette action est irréversible.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
       setSaving(true);
-      await supabase.from("archivage").delete().eq("id", id);
+      await dbApi.remove("archivage", id);
       setArchivage(archivage.filter((d) => d.id !== id));
     } catch (err: any) {
-      alert("Erreur suppression: " + err.message);
+      notify.error("Erreur suppression: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -528,7 +522,7 @@ const GestionDocumentation: React.FC = () => {
     if (!file) return;
     const ext = file.name.split(".").pop()?.toLowerCase();
     if (ext !== "xlsx" && ext !== "xls") {
-      alert("Veuillez sélectionner un fichier Excel (.xlsx ou .xls)");
+      notify.error("Veuillez sélectionner un fichier Excel (.xlsx ou .xls)");
       return;
     }
     setImportFile(file);
@@ -536,7 +530,7 @@ const GestionDocumentation: React.FC = () => {
 
   const handleImport = async (table: "interne" | "technique" | "archivage") => {
     if (!importFile) {
-      alert("Veuillez sélectionner un fichier Excel.");
+      notify.error("Veuillez sélectionner un fichier Excel.");
       return;
     }
     setSaving(true);
@@ -547,7 +541,7 @@ const GestionDocumentation: React.FC = () => {
       const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
 
       if (rows.length < 2) {
-        alert("Le fichier est vide ou ne contient que des en-têtes.");
+        notify.warning("Le fichier est vide ou ne contient que des en-têtes.");
         return;
       }
 
@@ -638,7 +632,7 @@ const GestionDocumentation: React.FC = () => {
       }
 
       if (newEntries.length === 0) {
-        alert("Aucune ligne valide à importer.");
+        notify.warning("Aucune ligne valide à importer.");
         return;
       }
 
@@ -648,19 +642,17 @@ const GestionDocumentation: React.FC = () => {
         archivage: "archivage",
       };
 
-      const { data: inserted, error } = await supabase
-        .from(tableMap[table])
-        .insert(newEntries)
-        .select();
-      if (error) throw error;
+      await Promise.all(
+        newEntries.map((row) => dbApi.create(tableMap[table], row)),
+      );
 
       await loadData();
-      alert(`${inserted.length} lignes importées avec succès.`);
+      notify.success(`${newEntries.length} lignes importées avec succès.`);
       setImportFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err: any) {
       console.error(err);
-      alert("Erreur lors de l'import : " + err.message);
+      notify.error("Erreur lors de l'import : " + err.message);
     } finally {
       setSaving(false);
     }

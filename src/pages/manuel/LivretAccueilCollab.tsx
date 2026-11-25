@@ -1,7 +1,7 @@
 // src/pages/manuel/LivretAccueilCollab.tsx
 import React, { useEffect, useState, useRef } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import { upsertManualToolContent } from "../../lib/manualToolPersistence";
 import * as mammoth from "mammoth";
 
@@ -250,14 +250,12 @@ const LivretAccueilCollab: React.FC = () => {
     const fetchContent = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase
-          .from("outils_manuel")
-          .select("contenu")
-          .eq("code", OUTIL_CODE)
-          .single();
+        const rows = await dbApi.list<{ contenu: string }>("outils_manuel", {
+          filters: { code: OUTIL_CODE },
+          limit: 1,
+        });
 
-        if (error) throw error;
-        setContent(data?.contenu || "");
+        setContent(rows?.[0]?.contenu || "");
       } catch (err) {
         console.error("Erreur chargement:", err);
         setError("Impossible de charger le livret d'accueil.");

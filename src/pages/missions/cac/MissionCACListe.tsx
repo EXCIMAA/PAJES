@@ -1,13 +1,12 @@
 import { useState, useEffect } from "react";
 import { Plus, Eye, Edit2, FileText, Search } from "lucide-react";
 import { Link } from "react-router-dom";
-import { supabase } from "../../../lib/supabase";
+import { dbApi } from "../../../lib/apiClient";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { Badge } from "../../../components/ui/Badge";
 import { RetourButton } from "../../../components/ui/RetourButton";
 import { formatCurrency } from "../../../lib/utils";
 import { ProtectedAction } from "../../../components/auth/ProtectedAction";
-import { buildAccessFilter } from "../../../lib/permissions";
 import { useAuth } from "../../../contexts/AuthContext";
 
 type MissionCAC = {
@@ -40,47 +39,37 @@ export default function MissionCACListe() {
     if (!user) return;
     setLoading(true);
     try {
-      const accessFilter = buildAccessFilter({
-        role: profile?.role,
-        module: "missions",
-        currentUserId: user.id,
-        ownerColumn: "created_by",
-        assignmentColumn: "chef_mission_id",
-      });
+      const [missionsData, clientsData] = await Promise.all([
+        dbApi.list("missions_cac", {
+          orderBy: "created_at",
+          orderAsc: false,
+          limit: 500,
+        }),
+        dbApi.list("clients", { orderBy: "name", limit: 500 }),
+      ]);
 
-      let query = supabase
-        .from("missions_cac")
-        .select(
-          `
-          id,
-          client_id,
-          exercice,
-          assiette_calcul,
-          temps_retenu,
-          total_budget,
-          facture_nette,
-          marge_estimee,
-          statut,
-          created_at,
-          clients (name)
-        `,
-        )
-        .order("created_at", { ascending: false });
+      const clientMap = new Map(
+        (clientsData || []).map((c: any) => [c.id, c.name]),
+      );
 
-      if (accessFilter) query = query.or(accessFilter);
-      if (statutFilter) query = query.eq("statut", statutFilter);
-      if (exerciceFilter) query = query.eq("exercice", exerciceFilter);
+      let mapped = (missionsData || []).map((item: any) => ({
+        ...item,
+        client_nom: clientMap.get(item.client_id) || "Client inconnu",
+      }));
+
+      if (statutFilter) {
+        mapped = mapped.filter((m: any) => m.statut === statutFilter);
+      }
+      if (exerciceFilter) {
+        mapped = mapped.filter((m: any) => m.exercice === exerciceFilter);
+      }
       if (search) {
-        query = query.ilike("clients.name", `%${search}%`);
+        const q = search.toLowerCase();
+        mapped = mapped.filter((m: any) =>
+          (m.client_nom || "").toLowerCase().includes(q),
+        );
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const mapped = (data || []).map((item: any) => ({
-        ...item,
-        client_nom: item.clients?.name || "Client inconnu",
-      }));
       setMissions(mapped);
     } catch (err) {
       console.error("Erreur chargement missions CAC:", err);
@@ -107,9 +96,9 @@ export default function MissionCACListe() {
   function getStatutLabel(statut: string) {
     const labels: Record<string, string> = {
       brouillon: "Brouillon",
-      valide: "Validé",
-      facture_emise: "Facture émise",
-      facture_payee: "Payée",
+      valide: "ValidÃ©",
+      facture_emise: "Facture Ã©mise",
+      facture_payee: "PayÃ©e",
     };
     return labels[statut] || statut;
   }
@@ -162,9 +151,9 @@ export default function MissionCACListe() {
         >
           <option value="">Tous les statuts</option>
           <option value="brouillon">Brouillon</option>
-          <option value="valide">Validé</option>
-          <option value="facture_emise">Facture émise</option>
-          <option value="facture_payee">Payée</option>
+          <option value="valide">ValidÃ©</option>
+          <option value="facture_emise">Facture Ã©mise</option>
+          <option value="facture_payee">PayÃ©e</option>
         </select>
         <button onClick={loadMissions} className="btn-secondary btn-md">
           Appliquer
@@ -183,12 +172,12 @@ export default function MissionCACListe() {
           </div>
         ) : missions.length === 0 ? (
           <div className="text-center py-8 text-slate-500">
-            <p>Aucune mission CAC trouvée.</p>
+            <p>Aucune mission CAC trouvÃ©e.</p>
             <Link
               to="/missions/cac/nouveau"
               className="text-primary-600 hover:underline mt-2 inline-block"
             >
-              Créer la première mission
+              CrÃ©er la premiÃ¨re mission
             </Link>
           </div>
         ) : (

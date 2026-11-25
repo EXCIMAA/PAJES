@@ -2,8 +2,9 @@
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 import { useTranslation } from "react-i18next";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import { addNotification } from "../../lib/notifications";
+import { useNotification, useConfirm } from "../../contexts/NotificationContext";
 import { format } from "date-fns";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -370,6 +371,8 @@ const EmptyState = styled.div`
 // ========== COMPOSANT PRINCIPAL ==========
 export const CaissePage: React.FC = () => {
   const { t } = useTranslation();
+  const { notify } = useNotification();
+  const confirm = useConfirm();
   const [type, setType] = useState<"DEPENSE" | "APPROVISIONNEMENT">("DEPENSE");
   const [form, setForm] = useState({
     destinataire: "",
@@ -391,11 +394,11 @@ export const CaissePage: React.FC = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("caisse")
-        .select("*")
-        .order("date_piece", { ascending: true });
-      if (error) throw error;
+      const data = await dbApi.list<any>("caisse", {
+        orderBy: "date_piece",
+        orderAsc: true,
+        limit: 500,
+      });
       setPieces(data || []);
     } catch (err) {
       console.error(err);
@@ -454,23 +457,23 @@ export const CaissePage: React.FC = () => {
     e.preventDefault();
 
     if (!form.somme || parseFloat(form.somme) <= 0) {
-      alert(t("errors.generic"));
+      notify.error(t("errors.generic"));
       return;
     }
     if (!form.lieu) {
-      alert(t("errors.generic"));
+      notify.error(t("errors.generic"));
       return;
     }
     if (!form.date_piece) {
-      alert(t("errors.generic"));
+      notify.error(t("errors.generic"));
       return;
     }
     if (type === "DEPENSE" && !form.destinataire) {
-      alert(t("errors.generic"));
+      notify.error(t("errors.generic"));
       return;
     }
     if (type === "APPROVISIONNEMENT" && !form.recu_de) {
-      alert(t("errors.generic"));
+      notify.error(t("errors.generic"));
       return;
     }
 
@@ -497,8 +500,7 @@ export const CaissePage: React.FC = () => {
         payload.signature_beneficiaire = null;
       }
 
-      const { error } = await supabase.from("caisse").insert([payload]);
-      if (error) throw error;
+      await dbApi.create("caisse", payload);
 
       void addNotification({
         title: "Pièce de caisse créée",
@@ -519,17 +521,23 @@ export const CaissePage: React.FC = () => {
       });
       await loadData();
     } catch (err: any) {
-      alert(t("errors.savingError"));
+      notify.error(t("errors.savingError"));
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm(t("confirms.deletePiece"))) return;
+    const confirmed = await confirm({
+      title: t("confirms.deletePiece"),
+      message: "Cette action est irréversible.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
-      const { error } = await supabase.from("caisse").delete().eq("id", id);
-      if (error) throw error;
+      await dbApi.remove("caisse", id);
       await loadData();
       void addNotification({
         title: "Pièce supprimée",
@@ -537,7 +545,7 @@ export const CaissePage: React.FC = () => {
         type: "caisse",
       });
     } catch (err: any) {
-      alert(t("errors.deletingError"));
+      notify.error(t("errors.deletingError"));
     }
   };
 
@@ -643,7 +651,7 @@ export const CaissePage: React.FC = () => {
       pdf.save(`PieceCaisse_${piece.type}_${piece.id.slice(0, 8)}.pdf`);
     } catch (err) {
       console.error(err);
-      alert("Erreur lors de l'export PDF.");
+      notify.error("Erreur lors de l'export PDF.");
     } finally {
       setExportingId(null);
     }
@@ -651,7 +659,7 @@ export const CaissePage: React.FC = () => {
 
   const exportRecapPDF = async () => {
     if (recapData.rows.length === 0) {
-      alert("Aucune donnée à exporter.");
+      notify.error("Aucune donnée à exporter.");
       return;
     }
     setExportingRecap(true);
@@ -735,7 +743,7 @@ export const CaissePage: React.FC = () => {
       pdf.save(`Recapitulatif_Caisse_${format(new Date(), "ddMMyyyy")}.pdf`);
     } catch (err) {
       console.error(err);
-      alert("Erreur lors de l'export du récapitulatif.");
+      notify.error("Erreur lors de l'export du récapitulatif.");
     } finally {
       setExportingRecap(false);
     }

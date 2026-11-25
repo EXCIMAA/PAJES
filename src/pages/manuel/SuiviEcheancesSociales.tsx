@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import * as XLSX from "xlsx";
+import { useNotification } from "../../contexts/NotificationContext";
 
 // ==================== STYLED COMPONENTS (inchangés) ====================
 // ... (je conserve tous les styles précédents, ils sont identiques) ...
@@ -275,6 +276,7 @@ const SuiviEcheancesSociales: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const { notify } = useNotification();
   const [clientData, setClientData] = useState<Client | null>(null);
 
   // Ref pour savoir si les échéances client ont déjà été chargées pour le client/année courant
@@ -285,13 +287,10 @@ const SuiviEcheancesSociales: React.FC = () => {
     const fetchClients = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase
-          .from("clients")
-          .select(
-            "id, client_code, name, status, niveau_risque, industry, address, nb_salaries",
-          )
-          .order("name");
-        if (error) throw error;
+        const data = await dbApi.list<any>("clients", {
+          orderBy: "name",
+          limit: 500,
+        });
         setClients(data || []);
         if (data && data.length > 0) {
           setSelectedClientId(data[0].id);
@@ -311,16 +310,16 @@ const SuiviEcheancesSociales: React.FC = () => {
   // Chargement des échéances sociales (définition)
   useEffect(() => {
     const fetchEcheances = async () => {
-      const { data, error } = await supabase
-        .from("echeances_sociales")
-        .select("*")
-        .eq("active", true)
-        .order("nom");
-      if (error) {
+      try {
+        const data = await dbApi.list<any>("echeances_sociales", {
+          filters: { active: "true" },
+          orderBy: "nom",
+          limit: 500,
+        });
+        setEcheancesSociales(data || []);
+      } catch (error) {
         console.error("Erreur chargement échéances sociales:", error);
         setError("Impossible de charger les échéances sociales.");
-      } else {
-        setEcheancesSociales(data || []);
       }
     };
     fetchEcheances();
@@ -331,12 +330,7 @@ const SuiviEcheancesSociales: React.FC = () => {
     if (!selectedClientId) return;
     const fetchClientData = async () => {
       try {
-        const { data, error } = await supabase
-          .from("clients")
-          .select("*")
-          .eq("id", selectedClientId)
-          .single();
-        if (error) throw error;
+        const data = await dbApi.get<any>("clients", selectedClientId);
         setClientData(data);
       } catch (err: any) {
         console.error(err);
@@ -355,12 +349,10 @@ const SuiviEcheancesSociales: React.FC = () => {
 
     const loadEcheances = async () => {
       try {
-        const { data, error } = await supabase
-          .from("echeances_client")
-          .select("*")
-          .eq("client_id", selectedClientId)
-          .eq("annee", selectedYear);
-        if (error) throw error;
+        const data = await dbApi.list<any>("echeances_client", {
+          filters: { client_id: selectedClientId, annee: String(selectedYear) },
+          limit: 500,
+        });
         if (data && data.length > 0) {
           setEcheancesClient(data);
         } else {
@@ -397,15 +389,19 @@ const SuiviEcheancesSociales: React.FC = () => {
             }
           });
           if (defaultRows.length > 0) {
-            const { error: insertError } = await supabase
-              .from("echeances_client")
-              .insert(defaultRows);
-            if (insertError) throw insertError;
-            const { data: freshData } = await supabase
-              .from("echeances_client")
-              .select("*")
-              .eq("client_id", selectedClientId)
-              .eq("annee", selectedYear);
+            for (const row of defaultRows) {
+              await dbApi.create(
+                "echeances_client",
+                row as unknown as Record<string, unknown>,
+              );
+            }
+            const freshData = await dbApi.list<any>("echeances_client", {
+              filters: {
+                client_id: selectedClientId,
+                annee: String(selectedYear),
+              },
+              limit: 500,
+            });
             setEcheancesClient(freshData || []);
           } else {
             setEcheancesClient([]);
@@ -424,20 +420,21 @@ const SuiviEcheancesSociales: React.FC = () => {
     if (!selectedClientId) return;
     setSaving(true);
     try {
-      await supabase
-        .from("echeances_client")
-        .delete()
-        .eq("client_id", selectedClientId)
-        .eq("annee", selectedYear);
+      const existing = await dbApi.list<any>("echeances_client", {
+        filters: { client_id: selectedClientId, annee: String(selectedYear) },
+        limit: 500,
+      });
+      for (const row of existing) {
+        await dbApi.remove("echeances_client", row.id);
+      }
       const insertData = echeancesClient.map(({ id, ...rest }) => rest);
-      const { error } = await supabase
-        .from("echeances_client")
-        .insert(insertData);
-      if (error) throw error;
-      alert("Échéances sauvegardées !");
+      for (const row of insertData) {
+        await dbApi.create("echeances_client", row);
+      }
+      notify.success("Échéances sauvegardées !");
     } catch (err: any) {
       console.error(err);
-      alert("Erreur : " + err.message);
+      notify.error("Erreur : " + err.message);
     } finally {
       setSaving(false);
     }
@@ -448,16 +445,14 @@ const SuiviEcheancesSociales: React.FC = () => {
     if (!selectedClientId) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("echeances_client")
-        .select("*")
-        .eq("client_id", selectedClientId)
-        .eq("annee", selectedYear);
-      if (error) throw error;
+      const data = await dbApi.list<any>("echeances_client", {
+        filters: { client_id: selectedClientId, annee: String(selectedYear) },
+        limit: 500,
+      });
       setEcheancesClient(data || []);
     } catch (err: any) {
       console.error(err);
-      alert("Erreur annulation : " + err.message);
+      notify.error("Erreur annulation : " + err.message);
     } finally {
       setLoading(false);
     }

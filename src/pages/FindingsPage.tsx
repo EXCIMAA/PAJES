@@ -8,11 +8,11 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { mapFindingRow } from "../lib/db-mappers";
 import { RISK_LABELS } from "../lib/constants";
 import { cn, formatDate } from "../lib/utils";
-import { supabase } from "../lib/supabase";
+import { dbApi } from "../lib/apiClient";
 import { addNotification } from "../lib/notifications";
+import { useNotification, useConfirm } from "../contexts/NotificationContext";
 import type { Finding, ColumnDef } from "../types";
 import { ProtectedAction } from "../components/auth/ProtectedAction";
-import { buildAccessFilter } from "../lib/permissions";
 import { useAuth } from "../contexts/AuthContext";
 
 type FindingExtended = Finding & {
@@ -21,7 +21,7 @@ type FindingExtended = Finding & {
 };
 
 export function FindingsPage() {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const [data, setData] = useState<FindingExtended[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,9 +41,9 @@ export function FindingsPage() {
     target_date: "",
   });
 
-  // ─────────────────────────────────────────────
-  // FETCH with row-level filter
-  // ─────────────────────────────────────────────
+  const { notify } = useNotification();
+  const confirm = useConfirm();
+
   const refetch = async () => {
     if (!user) {
       setLoading(false);
@@ -51,24 +51,11 @@ export function FindingsPage() {
     }
     setLoading(true);
     try {
-      const accessFilter = buildAccessFilter({
-        role: profile?.role,
-        module: "findings",
-        currentUserId: user.id,
-        ownerColumn: "created_by",
-        assignmentColumn: "responsible_person",
+      const rawData = await dbApi.list<FindingExtended>("findings", {
+        orderBy: "created_at",
+        orderAsc: false,
+        limit: 500,
       });
-
-      let q = supabase
-        .from("findings")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (accessFilter) q = q.or(accessFilter);
-
-      const { data: rawData, error: fetchError } = await q;
-      if (fetchError) throw fetchError;
-
       setData((rawData || []).map(mapFindingRow) as FindingExtended[]);
       setError(null);
     } catch (err: any) {
@@ -82,11 +69,8 @@ export function FindingsPage() {
 
   useEffect(() => {
     refetch();
-  }, [user, profile?.role]);
+  }, [user]);
 
-  // ─────────────────────────────────────────────
-  // DERIVED
-  // ─────────────────────────────────────────────
   const filtered =
     filter === "all"
       ? data
@@ -102,13 +86,10 @@ export function FindingsPage() {
     [data],
   );
 
-  // ─────────────────────────────────────────────
-  // HANDLERS
-  // ─────────────────────────────────────────────
   const handleSave = async () => {
     try {
       if (!form.finding.trim()) {
-        alert("Veuillez saisir un constat");
+        notify.error("Veuillez saisir un constat");
         return;
       }
 
@@ -125,25 +106,15 @@ export function FindingsPage() {
         created_by: user?.id || null,
       };
 
-      let result;
       if (editingFinding) {
-        result = await supabase
-          .from("findings")
-          .update(payload)
-          .eq("id", editingFinding.id);
-      } else {
-        result = await supabase.from("findings").insert([payload]);
-      }
-
-      if (result.error) throw result.error;
-
-      if (editingFinding) {
+        await dbApi.update("findings", editingFinding.id, payload);
         void addNotification({
           title: "Constat mis à jour",
           message: `Le constat a été mis à jour.`,
           type: "finding",
         });
       } else {
+        await dbApi.create("findings", payload);
         void addNotification({
           title: "Nouveau constat",
           message: `Un nouveau constat a été créé.`,
@@ -156,15 +127,21 @@ export function FindingsPage() {
       setEditingFinding(null);
     } catch (err: any) {
       console.error("Erreur lors de la sauvegarde :", err);
-      alert("Erreur : " + (err.message || "Inconnue"));
+      notify.error("Erreur : " + (err.message || "Inconnue"));
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Supprimer ce constat ?")) return;
+    const confirmed = await confirm({
+      title: "Supprimer ce constat ?",
+      message: "Cette action est irréversible.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
-      const { error } = await supabase.from("findings").delete().eq("id", id);
-      if (error) throw error;
+      await dbApi.remove("findings", id);
       void addNotification({
         title: "Constat supprimé",
         message: "Un constat a été supprimé.",
@@ -172,7 +149,7 @@ export function FindingsPage() {
       });
       await refetch();
     } catch (err: any) {
-      alert("Erreur lors de la suppression : " + err.message);
+      notify.error("Erreur lors de la suppression : " + err.message);
     }
   };
 
@@ -204,9 +181,6 @@ export function FindingsPage() {
     setShowModal(true);
   };
 
-  // ─────────────────────────────────────────────
-  // TABLE COLUMNS
-  // ─────────────────────────────────────────────
   const columns: ColumnDef<FindingExtended>[] = [
     {
       key: "finding",
@@ -324,9 +298,6 @@ export function FindingsPage() {
     },
   ];
 
-  // ─────────────────────────────────────────────
-  // RENDER
-  // ─────────────────────────────────────────────
   return (
     <div className="page-container">
       <PageHeader

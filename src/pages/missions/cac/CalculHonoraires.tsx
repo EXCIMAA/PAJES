@@ -1,6 +1,6 @@
 // src/pages/missions/cac/CalculHonaraires.tsx (Top part only)
 import { useState, useEffect } from "react";
-import { supabase } from "../../../lib/supabase";
+import { dbApi } from "../../../lib/apiClient";
 import { Calculator } from "lucide-react";
 import { RetourButton } from "../../../components/ui/RetourButton";
 
@@ -33,20 +33,16 @@ export function CalculHonoraires({
   }, [missionId]);
 
   async function loadReferences() {
-    const { data: grilleData } = await supabase
-      .from("grille_honoraires")
-      .select("*")
-      .order("tranche_min");
+    const grilleData = await dbApi.list("grille_honoraires", {
+      orderBy: "tranche_min",
+      orderAsc: true,
+    });
     if (grilleData) setGrille(grilleData);
   }
 
   async function loadMission() {
     if (!missionId) return;
-    const { data } = await supabase
-      .from("missions_cac")
-      .select("*")
-      .eq("id", missionId)
-      .single();
+    const data = await dbApi.get<any>("missions_cac", missionId);
     if (data) {
       setDonnees({
         total_bilan: data.total_bilan?.toString() || "",

@@ -50,6 +50,7 @@ export const ACTIONS = ["create", "view", "edit", "delete"] as const;
 
 export const POSTES = [
   "super_admin",
+  "user",
   "assistant_administratif",
   "rh",
   "responsable_controle_interne",
@@ -119,6 +120,35 @@ const FULL = P(true, true, true, true);
 // MATRICE
 // ============================================================
 export const PERMISSION_MATRIX: PermissionMatrix = {
+  // ============ Rôle par défaut (nouvelle inscription) ============
+  // Aucun accès : un administrateur doit attribuer un rôle réel.
+  user: {
+    clients:             NONE,
+    missions:            NONE,
+    review_notes:        NONE,
+    findings:            NONE,
+    besoins_cabinet:     NONE,
+    stock:               NONE,
+    immobilisations:     NONE,
+    caisse:              NONE,
+    suivi_cac:           NONE,
+    conges:              NONE,
+    manuel:              NONE,
+    notes_frais:         NONE,
+    fournisseurs:        NONE,
+    ressources_internes: NONE,
+    collaborateurs:      NONE,
+    factures:            NONE,
+    collaborateur_profiles:     NONE,
+    collaborateur_hr:           NONE,
+    collaborateur_financial:    NONE,
+    collaborateur_missions:     NONE,
+    collaborateur_leave:        NONE,
+    collaborateur_performance:  NONE,
+    collaborateur_documents:    NONE,
+    collaborateur_audit:        NONE,
+  },
+
   // ============ Assistant Administratif ============
   assistant_administratif: {
     clients:             FULL,

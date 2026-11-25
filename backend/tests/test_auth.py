@@ -147,7 +147,7 @@ def test_signup_and_activation_preserve_new_identity_and_store_argon2id(
 
     credential = test_db.query(UserCredential).filter_by(id=original_id).one()
     assert profile.id == original_id
-    assert profile.role == "stagiaires"
+    assert profile.role == "user"
     assert credential.is_active is True
     assert credential.password_hash.startswith("$argon2id$")
     assert token not in credential.password_hash
@@ -924,10 +924,11 @@ def test_development_mailbox_http_endpoint_returns_queued_messages(
 
     import app.api.v1.auth as auth_routes
 
+    real_ip_address = ipaddress.ip_address
     monkeypatch.setattr(
         auth_routes.ipaddress,
         "ip_address",
-        lambda host: ipaddress.ip_address("127.0.0.1"),
+        lambda host: real_ip_address("127.0.0.1"),
     )
 
     assert _signup(client, "mailbox@test.com").status_code == 202

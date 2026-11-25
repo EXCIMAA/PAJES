@@ -1,8 +1,12 @@
 // src/pages/manuel/GestionTemps.tsx
 import React, { useEffect, useState, useRef } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import * as XLSX from "xlsx";
+import {
+  useNotification,
+  useConfirm,
+} from "../../contexts/NotificationContext";
 
 // ==================== STYLES (inchangés) ====================
 const Container = styled.div`
@@ -368,6 +372,8 @@ const GestionTemps: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const { notify } = useNotification();
+  const confirm = useConfirm();
 
   // Import
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -377,22 +383,19 @@ const GestionTemps: React.FC = () => {
     try {
       setLoading(true);
       const [intervRes, clientRes, missRes, entriesRes] = await Promise.all([
-        supabase.from("intervenants").select("*").order("nom"),
-        supabase.from("clients").select("*").order("name"),
-        supabase.from("missions").select("*").order("nom"),
-        supabase
-          .from("time_entries")
-          .select("*")
-          .order("date", { ascending: false }),
+        dbApi.list<Intervenant>("intervenants", { orderBy: "nom", limit: 500 }),
+        dbApi.list<Client>("clients", { orderBy: "name", limit: 500 }),
+        dbApi.list<Mission>("missions", { orderBy: "nom", limit: 500 }),
+        dbApi.list<TimeEntry>("time_entries", {
+          orderBy: "date",
+          orderAsc: false,
+          limit: 500,
+        }),
       ]);
-      if (intervRes.error) throw intervRes.error;
-      if (clientRes.error) throw clientRes.error;
-      if (missRes.error) throw missRes.error;
-      if (entriesRes.error) throw entriesRes.error;
-      setIntervenants(intervRes.data || []);
-      setClients(clientRes.data || []);
-      setMissions(missRes.data || []);
-      setTimeEntries(entriesRes.data || []);
+      setIntervenants(intervRes || []);
+      setClients(clientRes || []);
+      setMissions(missRes || []);
+      setTimeEntries(entriesRes || []);
     } catch (err: any) {
       console.error(err);
       setError(err.message);
@@ -410,12 +413,11 @@ const GestionTemps: React.FC = () => {
     if (!nom || !niveau || taux <= 0) return;
     try {
       setSaving(true);
-      const { data, error } = await supabase
-        .from("intervenants")
-        .insert([{ nom, niveau, taux }])
-        .select()
-        .single();
-      if (error) throw error;
+      const data = await dbApi.create<Intervenant>("intervenants", {
+        nom,
+        niveau,
+        taux,
+      });
       setIntervenants([...intervenants, data]);
     } catch (err: any) {
       setError(err.message);
@@ -425,10 +427,17 @@ const GestionTemps: React.FC = () => {
   };
 
   const deleteIntervenant = async (id: string) => {
-    if (!window.confirm("Supprimer cet intervenant ?")) return;
+    const confirmed = await confirm({
+      title: "Supprimer cet intervenant ?",
+      message: "Cette action est irréversible.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
       setSaving(true);
-      await supabase.from("intervenants").delete().eq("id", id);
+      await dbApi.remove("intervenants", id);
       setIntervenants(intervenants.filter((i) => i.id !== id));
     } catch (err: any) {
       setError(err.message);
@@ -441,12 +450,7 @@ const GestionTemps: React.FC = () => {
     if (!name || !code) return;
     try {
       setSaving(true);
-      const { data, error } = await supabase
-        .from("clients")
-        .insert([{ name, code }])
-        .select()
-        .single();
-      if (error) throw error;
+      const data = await dbApi.create<Client>("clients", { name, code });
       setClients([...clients, data]);
     } catch (err: any) {
       setError(err.message);
@@ -456,10 +460,17 @@ const GestionTemps: React.FC = () => {
   };
 
   const deleteClient = async (id: string) => {
-    if (!window.confirm("Supprimer ce client ?")) return;
+    const confirmed = await confirm({
+      title: "Supprimer ce client ?",
+      message: "Cette action est irréversible.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
       setSaving(true);
-      await supabase.from("clients").delete().eq("id", id);
+      await dbApi.remove("clients", id);
       setClients(clients.filter((c) => c.id !== id));
     } catch (err: any) {
       setError(err.message);
@@ -472,12 +483,11 @@ const GestionTemps: React.FC = () => {
     if (!nom || !code) return;
     try {
       setSaving(true);
-      const { data, error } = await supabase
-        .from("missions")
-        .insert([{ nom, code, tasks }])
-        .select()
-        .single();
-      if (error) throw error;
+      const data = await dbApi.create<Mission>("missions", {
+        nom,
+        code,
+        tasks,
+      });
       setMissions([...missions, data]);
     } catch (err: any) {
       setError(err.message);
@@ -487,10 +497,17 @@ const GestionTemps: React.FC = () => {
   };
 
   const deleteMission = async (id: string) => {
-    if (!window.confirm("Supprimer cette mission ?")) return;
+    const confirmed = await confirm({
+      title: "Supprimer cette mission ?",
+      message: "Cette action est irréversible.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
       setSaving(true);
-      await supabase.from("missions").delete().eq("id", id);
+      await dbApi.remove("missions", id);
       setMissions(missions.filter((m) => m.id !== id));
     } catch (err: any) {
       setError(err.message);
@@ -519,7 +536,7 @@ const GestionTemps: React.FC = () => {
       !newEntry.duree ||
       !newEntry.mission_id
     ) {
-      alert("Veuillez remplir tous les champs obligatoires.");
+      notify.error("Veuillez remplir tous les champs obligatoires.");
       return;
     }
     const ca = calculateCA(newEntry);
@@ -530,12 +547,7 @@ const GestionTemps: React.FC = () => {
     };
     try {
       setSaving(true);
-      const { data, error } = await supabase
-        .from("time_entries")
-        .insert([entryToInsert])
-        .select()
-        .single();
-      if (error) throw error;
+      const data = await dbApi.create<TimeEntry>("time_entries", entryToInsert);
       setTimeEntries([data, ...timeEntries]);
       setNewEntry({});
     } catch (err: any) {
@@ -546,10 +558,17 @@ const GestionTemps: React.FC = () => {
   };
 
   const deleteTimeEntry = async (id: string) => {
-    if (!window.confirm("Supprimer cette ligne ?")) return;
+    const confirmed = await confirm({
+      title: "Supprimer cette ligne ?",
+      message: "Cette action est irréversible.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
       setSaving(true);
-      await supabase.from("time_entries").delete().eq("id", id);
+      await dbApi.remove("time_entries", id);
       setTimeEntries(timeEntries.filter((e) => e.id !== id));
     } catch (err: any) {
       setError(err.message);
@@ -564,7 +583,7 @@ const GestionTemps: React.FC = () => {
     if (!file) return;
     const ext = file.name.split(".").pop()?.toLowerCase();
     if (ext !== "xlsx" && ext !== "xls") {
-      alert("Veuillez sélectionner un fichier Excel (.xlsx ou .xls)");
+      notify.error("Veuillez sélectionner un fichier Excel (.xlsx ou .xls)");
       return;
     }
     setImportFile(file);
@@ -572,7 +591,7 @@ const GestionTemps: React.FC = () => {
 
   const handleImport = async () => {
     if (!importFile) {
-      alert("Veuillez sélectionner un fichier Excel.");
+      notify.error("Veuillez sélectionner un fichier Excel.");
       return;
     }
     setSaving(true);
@@ -583,7 +602,7 @@ const GestionTemps: React.FC = () => {
       const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
 
       if (rows.length < 2) {
-        alert("Le fichier est vide ou ne contient que des en-têtes.");
+        notify.warning("Le fichier est vide ou ne contient que des en-têtes.");
         return;
       }
 
@@ -611,7 +630,9 @@ const GestionTemps: React.FC = () => {
       const required = ["intervenant", "date", "client", "duree"];
       const missing = required.filter((r) => !(r in colMap));
       if (missing.length > 0) {
-        alert(`Colonnes obligatoires manquantes : ${missing.join(", ")}`);
+        notify.error(
+          `Colonnes obligatoires manquantes : ${missing.join(", ")}`,
+        );
         return;
       }
 
@@ -645,17 +666,17 @@ const GestionTemps: React.FC = () => {
         const clientCode = clientsMap[clientName];
         const missionId = missionsMap[missionName];
         if (!intervenantId) {
-          alert(`Intervenant "${intervenantName}" inconnu`);
+          notify.error(`Intervenant "${intervenantName}" inconnu`);
           hasError = true;
           break;
         }
         if (!clientCode) {
-          alert(`Client "${clientName}" inconnu`);
+          notify.error(`Client "${clientName}" inconnu`);
           hasError = true;
           break;
         }
         if (!missionId) {
-          alert(`Mission "${missionName}" inconnue`);
+          notify.error(`Mission "${missionName}" inconnue`);
           hasError = true;
           break;
         }
@@ -686,23 +707,21 @@ const GestionTemps: React.FC = () => {
       }
 
       if (hasError || newEntries.length === 0) {
-        if (!hasError) alert("Aucune ligne valide à importer.");
+        if (!hasError) notify.warning("Aucune ligne valide à importer.");
         return;
       }
 
-      const { data: inserted, error } = await supabase
-        .from("time_entries")
-        .insert(newEntries)
-        .select();
-      if (error) throw error;
+      await Promise.all(
+        newEntries.map((row) => dbApi.create("time_entries", row)),
+      );
 
       await loadData();
-      alert(`${inserted.length} lignes importées avec succès.`);
+      notify.success(`${newEntries.length} lignes importées avec succès.`);
       setImportFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err: any) {
       console.error(err);
-      alert("Erreur lors de l'import : " + err.message);
+      notify.error("Erreur lors de l'import : " + err.message);
     } finally {
       setSaving(false);
     }

@@ -8,6 +8,7 @@ import { useCountry } from "../../contexts/CountryContext";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { addNotification } from "../../lib/notifications";
+import { useConfirm } from "../../contexts/NotificationContext";
 import { EtablissementsSection } from "./components/EtablissementsSection";
 import { ProtectedAction } from "../../components/auth/ProtectedAction"; // ✅ ADDED
 
@@ -121,6 +122,7 @@ type ModalState = { open: boolean; client: Partial<Client> | null };
 
 export default function ClientsPage() {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const { user } = useAuth();
   const { selectedCountry } = useCountry();
   const [clients, setClients] = useState<Client[]>([]);
@@ -286,7 +288,14 @@ export default function ClientsPage() {
   };
 
   const handleDelete = async (clientId: string, clientName: string) => {
-    if (!confirm(`Supprimer définitivement "${clientName}" ?`)) return;
+    const confirmed = await confirm({
+      title: "Supprimer ce client ?",
+      message: `Le client "${clientName}" sera définitivement supprimé.`,
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     setLoading(true);
     try {
       await clientsApi.delete(clientId);

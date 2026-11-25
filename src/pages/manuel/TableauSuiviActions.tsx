@@ -1,8 +1,12 @@
 // src/pages/manuel/TableauSuiviActions.tsx
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import * as XLSX from "xlsx";
+import {
+  useNotification,
+  useConfirm,
+} from "../../contexts/NotificationContext";
 
 // ==================== STYLES ====================
 const Container = styled.div`
@@ -249,17 +253,20 @@ const TableauSuiviActions: React.FC = () => {
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [newRow, setNewRow] = useState<Partial<Action>>({});
+  const { notify } = useNotification();
+  const confirm = useConfirm();
 
   const fetchActions = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("actions_cabinet")
-        .select("*")
-        .is("client_id", null)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
+      const allData = await dbApi.list<Action>("actions_cabinet", {
+        orderBy: "created_at",
+        orderAsc: false,
+        limit: 500,
+      });
+      const data = allData.filter(
+        (a: any) => a.client_id === null || a.client_id === undefined,
+      );
       setActions(data || []);
     } catch (err) {
       console.error("Erreur chargement:", err);
@@ -275,36 +282,31 @@ const TableauSuiviActions: React.FC = () => {
 
   const handleAdd = async () => {
     if (!newRow.action_desc) {
-      alert("Veuillez renseigner l'action décidée.");
+      notify.error("Veuillez renseigner l'action décidée.");
       return;
     }
     setSaving(true);
     try {
-      const { data, error } = await supabase
-        .from("actions_cabinet")
-        .insert({
-          action_desc: newRow.action_desc || "",
-          origine: newRow.origine || "",
-          date_decision: newRow.date_decision || "",
-          theme: newRow.theme || "",
-          responsable: newRow.responsable || "",
-          date_limite: newRow.date_limite || "",
-          moyens: newRow.moyens || "",
-          etat: newRow.etat || "A faire",
-          suivi: newRow.suivi || "",
-          efficace: newRow.efficace || "",
-          nouvelle_action: newRow.nouvelle_action || "",
-          client_id: null,
-        })
-        .select()
-        .single();
+      const data = await dbApi.create<Action>("actions_cabinet", {
+        action_desc: newRow.action_desc || "",
+        origine: newRow.origine || "",
+        date_decision: newRow.date_decision || "",
+        theme: newRow.theme || "",
+        responsable: newRow.responsable || "",
+        date_limite: newRow.date_limite || "",
+        moyens: newRow.moyens || "",
+        etat: newRow.etat || "A faire",
+        suivi: newRow.suivi || "",
+        efficace: newRow.efficace || "",
+        nouvelle_action: newRow.nouvelle_action || "",
+        client_id: null,
+      });
 
-      if (error) throw error;
       setActions([data, ...actions]);
       setNewRow({});
     } catch (err) {
       console.error("Erreur ajout:", err);
-      alert("Erreur lors de l'ajout.");
+      notify.error("Erreur lors de l'ajout.");
     } finally {
       setSaving(false);
     }
@@ -317,38 +319,36 @@ const TableauSuiviActions: React.FC = () => {
   ) => {
     try {
       setSaving(true);
-      const { error } = await supabase
-        .from("actions_cabinet")
-        .update({ [field]: value })
-        .eq("id", id);
+      await dbApi.update("actions_cabinet", id, { [field]: value });
 
-      if (error) throw error;
       setActions(
         actions.map((a) => (a.id === id ? { ...a, [field]: value } : a)),
       );
     } catch (err) {
       console.error("Erreur mise à jour:", err);
-      alert("Erreur lors de la mise à jour.");
+      notify.error("Erreur lors de la mise à jour.");
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Voulez-vous vraiment supprimer cette action ?"))
-      return;
+    const confirmed = await confirm({
+      title: "Supprimer cette action ?",
+      message: "Cette action est irréversible.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
       setSaving(true);
-      const { error } = await supabase
-        .from("actions_cabinet")
-        .delete()
-        .eq("id", id);
+      await dbApi.remove("actions_cabinet", id);
 
-      if (error) throw error;
       setActions(actions.filter((a) => a.id !== id));
     } catch (err) {
       console.error("Erreur suppression:", err);
-      alert("Erreur lors de la suppression.");
+      notify.error("Erreur lors de la suppression.");
     } finally {
       setSaving(false);
     }
@@ -356,7 +356,7 @@ const TableauSuiviActions: React.FC = () => {
 
   const exportExcel = () => {
     if (actions.length === 0) {
-      alert("Aucune action à exporter.");
+      notify.warning("Aucune action à exporter.");
       return;
     }
 

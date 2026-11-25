@@ -1,6 +1,5 @@
 // src/components/DocumentLink.tsx
 import { useEffect, useState } from "react";
-import { getSignedUrl } from "../lib/storage";
 import { FileText } from "lucide-react";
 
 interface DocumentLinkProps {
@@ -10,6 +9,8 @@ interface DocumentLinkProps {
   className?: string;
   /** Afficher une icône ? */
   showIcon?: boolean;
+  /** File ID for FastAPI download endpoint */
+  fileId?: string;
 }
 
 export function DocumentLink({
@@ -18,8 +19,9 @@ export function DocumentLink({
   label = "Voir le document",
   className = "",
   showIcon = true,
+  fileId,
 }: DocumentLinkProps) {
-  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -27,10 +29,28 @@ export function DocumentLink({
 
     const load = async () => {
       setLoading(true);
-      const url = await getSignedUrl(filePath, 3600, bucket);
-      if (isMounted) {
-        setSignedUrl(url);
-        setLoading(false);
+      try {
+        // Use FastAPI download endpoint if fileId is available
+        if (fileId) {
+          if (isMounted) {
+            setUrl(`/api/v1/files/${fileId}/download`);
+            setLoading(false);
+          }
+          return;
+        }
+        // Fallback: construct URL from storage path
+        const resolvedPath = filePath.startsWith("/")
+          ? filePath
+          : `/api/v1/files/download?path=${encodeURIComponent(filePath)}`;
+        if (isMounted) {
+          setUrl(resolvedPath);
+          setLoading(false);
+        }
+      } catch {
+        if (isMounted) {
+          setUrl(null);
+          setLoading(false);
+        }
       }
     };
 
@@ -38,13 +58,13 @@ export function DocumentLink({
     return () => {
       isMounted = false;
     };
-  }, [filePath, bucket]);
+  }, [filePath, bucket, fileId]);
 
   if (loading) {
     return <span className="text-slate-400 text-xs">Chargement...</span>;
   }
 
-  if (!signedUrl) {
+  if (!url) {
     return (
       <span className="text-error-500 text-xs flex items-center gap-1">
         {showIcon && <FileText className="w-3 h-3" />}
@@ -55,7 +75,7 @@ export function DocumentLink({
 
   return (
     <a
-      href={signedUrl}
+      href={url}
       target="_blank"
       rel="noopener noreferrer"
       className={`text-primary-500 hover:text-primary-600 text-xs flex items-center gap-1 ${className}`}

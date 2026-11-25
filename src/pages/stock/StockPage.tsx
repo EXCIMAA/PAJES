@@ -5,14 +5,16 @@ import { PageHeader } from "../../components/ui/PageHeader";
 import { Badge } from "../../components/ui/Badge";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { formatCurrency } from "../../lib/utils";
-import { fetchStockItems } from "../../lib/db-queries";
+import { dbApi } from "../../lib/apiClient";
 import { addNotification } from "../../lib/notifications";
-import { supabase } from "../../lib/supabase";
+import { useNotification, useConfirm } from "../../contexts/NotificationContext";
 import type { StockItem } from "../../types";
-import { ProtectedAction } from "../../components/auth/ProtectedAction"; // ✅ ADDED
+import { ProtectedAction } from "../../components/auth/ProtectedAction";
 
 export function StockPage() {
   const { t } = useTranslation();
+  const { notify } = useNotification();
+  const confirm = useConfirm();
   const [items, setItems] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,14 +44,17 @@ export function StockPage() {
 
   const loadItems = async () => {
     setLoading(true);
-    const result = await fetchStockItems();
-    if (result.error) {
-      setError(result.error);
-    } else {
-      setItems(result.data);
+    try {
+      const data = await dbApi.list<StockItem>("stock_items", {
+        limit: 500,
+      });
+      setItems(data);
       setError(null);
+    } catch (err: any) {
+      setError(err.message || "Erreur de chargement");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -76,10 +81,14 @@ export function StockPage() {
     let item = findItemByName(name);
     if (item) return item;
 
-    const confirmCreate = confirm(
-      `L'article "${name}" n'existe pas. Voulez-vous le créer ?`,
-    );
-    if (!confirmCreate) return null;
+    const confirmed = await confirm({
+      title: "Créer cet article ?",
+      message: `L'article "${name}" n'existe pas. Voulez-vous le créer ?`,
+      variant: "warning",
+      confirmLabel: "Créer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return null;
 
     const newItem = {
       item_name: name,
@@ -89,16 +98,7 @@ export function StockPage() {
       quantity_released: 0,
     };
 
-    const { data, error } = await supabase
-      .from("stock_items")
-      .insert([newItem])
-      .select()
-      .single();
-
-    if (error) {
-      alert(t("stock.creatingError", { message: error.message }));
-      return null;
-    }
+    const data = await dbApi.create<StockItem>("stock_items", newItem);
 
     await loadItems();
     void addNotification({
@@ -111,7 +111,7 @@ export function StockPage() {
 
   const handleStockIn = async () => {
     if (stockInForm.quantity <= 0) {
-      alert(t("errors.generic"));
+      notify.error(t("errors.generic"));
       return;
     }
 
@@ -132,26 +132,15 @@ export function StockPage() {
         updates.unit_cost = unitCost;
       }
 
-      const { error: updateError } = await supabase
-        .from("stock_items")
-        .update(updates)
-        .eq("id", item.id);
+      await dbApi.update("stock_items", item.id, updates);
 
-      if (updateError) throw updateError;
-
-      const { error: movementError } = await supabase
-        .from("stock_movements")
-        .insert([
-          {
-            item_id: item.id,
-            type: "in",
-            quantity: stockInForm.quantity,
-            note: stockInForm.note || null,
-            created_at: new Date().toISOString(),
-          },
-        ]);
-
-      if (movementError) throw movementError;
+      await dbApi.create("stock_movements", {
+        item_id: item.id,
+        type: "in",
+        quantity: stockInForm.quantity,
+        note: stockInForm.note || null,
+        created_at: new Date().toISOString(),
+      });
 
       await loadItems();
       void addNotification({
@@ -161,8 +150,8 @@ export function StockPage() {
       });
       setShowStockIn(false);
       setStockInForm({ item_name: "", quantity: 1, unit_cost: 0, note: "" });
-    } catch (err: any) {
-      alert(t("errors.savingError"));
+    } catch {
+      notify.error(t("errors.savingError"));
     } finally {
       setSubmitting(false);
     }
@@ -170,7 +159,7 @@ export function StockPage() {
 
   const handleStockOut = async () => {
     if (stockOutForm.quantity <= 0) {
-      alert(t("errors.generic"));
+      notify.error(t("errors.generic"));
       return;
     }
 
@@ -183,33 +172,22 @@ export function StockPage() {
       }
 
       if (stockOutForm.quantity > item.remaining_quantity) {
-        alert(t("stock.deletingError"));
+        notify.error(t("stock.deletingError"));
         setSubmitting(false);
         return;
       }
 
-      const { error: updateError } = await supabase
-        .from("stock_items")
-        .update({
-          quantity_released: item.quantity_released + stockOutForm.quantity,
-        })
-        .eq("id", item.id);
+      await dbApi.update("stock_items", item.id, {
+        quantity_released: item.quantity_released + stockOutForm.quantity,
+      });
 
-      if (updateError) throw updateError;
-
-      const { error: movementError } = await supabase
-        .from("stock_movements")
-        .insert([
-          {
-            item_id: item.id,
-            type: "out",
-            quantity: stockOutForm.quantity,
-            note: stockOutForm.note || null,
-            created_at: new Date().toISOString(),
-          },
-        ]);
-
-      if (movementError) throw movementError;
+      await dbApi.create("stock_movements", {
+        item_id: item.id,
+        type: "out",
+        quantity: stockOutForm.quantity,
+        note: stockOutForm.note || null,
+        created_at: new Date().toISOString(),
+      });
 
       await loadItems();
       void addNotification({
@@ -219,8 +197,8 @@ export function StockPage() {
       });
       setShowStockOut(false);
       setStockOutForm({ item_name: "", quantity: 1, note: "" });
-    } catch (err: any) {
-      alert(t("errors.savingError"));
+    } catch {
+      notify.error(t("errors.savingError"));
     } finally {
       setSubmitting(false);
     }
@@ -240,16 +218,11 @@ export function StockPage() {
     if (!editingItem) return;
     setSubmitting(true);
     try {
-      const { error } = await supabase
-        .from("stock_items")
-        .update({
-          item_name: editForm.item_name,
-          category: editForm.category,
-          unit_cost: editForm.unit_cost,
-        })
-        .eq("id", editingItem.id);
-
-      if (error) throw error;
+      await dbApi.update("stock_items", editingItem.id, {
+        item_name: editForm.item_name,
+        category: editForm.category,
+        unit_cost: editForm.unit_cost,
+      });
 
       await loadItems();
       void addNotification({
@@ -259,8 +232,8 @@ export function StockPage() {
       });
       setShowEditModal(false);
       setEditingItem(null);
-    } catch (err: any) {
-      alert(t("errors.savingError"));
+    } catch {
+      notify.error(t("errors.savingError"));
     } finally {
       setSubmitting(false);
     }

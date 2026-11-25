@@ -1,13 +1,20 @@
-import { supabase } from "./supabase";
+import { dbApi } from "./apiClient";
+
+type ManualToolRow = {
+  id?: string | number;
+  code?: string;
+  contenu?: string;
+  titre?: string;
+  icon?: string;
+};
 
 export const getManualToolContent = async (code: string): Promise<string> => {
-  const { data, error } = await supabase
-    .from("outils_manuel")
-    .select("contenu")
-    .eq("code", code)
-    .maybeSingle();
+  const rows = await dbApi.list<ManualToolRow>("outils_manuel", {
+    filters: { code },
+    limit: 500,
+  });
 
-  if (error) throw error;
+  const data = rows.find((row) => row.code === code) ?? null;
   return data?.contenu || "";
 };
 
@@ -22,13 +29,12 @@ export const upsertManualToolContent = async ({
   titre: string;
   icon?: string;
 }) => {
-  const { data: existing, error: fetchError } = await supabase
-    .from("outils_manuel")
-    .select("id, titre, icon")
-    .eq("code", code)
-    .maybeSingle();
+  const rows = await dbApi.list<ManualToolRow>("outils_manuel", {
+    filters: { code },
+    limit: 500,
+  });
 
-  if (fetchError) throw fetchError;
+  const existing = rows.find((row) => row.code === code) ?? null;
 
   const payload: {
     id?: string | number;
@@ -45,14 +51,8 @@ export const upsertManualToolContent = async ({
 
   if (existing?.id) {
     payload.id = existing.id;
+    return dbApi.update("outils_manuel", String(existing.id), payload);
   }
 
-  const { data, error } = await supabase
-    .from("outils_manuel")
-    .upsert(payload, { onConflict: "code" })
-    .select()
-    .maybeSingle();
-
-  if (error) throw error;
-  return data;
+  return dbApi.create("outils_manuel", payload);
 };

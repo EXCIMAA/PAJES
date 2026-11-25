@@ -1,8 +1,12 @@
 // src/pages/manuel/SuiviObjectifs.tsx
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import * as XLSX from "xlsx";
+import {
+  useNotification,
+  useConfirm,
+} from "../../contexts/NotificationContext";
 
 // ==================== STYLES ====================
 const Container = styled.div`
@@ -180,17 +184,20 @@ const SuiviObjectifs: React.FC = () => {
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [newRow, setNewRow] = useState<Partial<Objectif>>({});
+  const { notify } = useNotification();
+  const confirm = useConfirm();
 
   const fetchObjectifs = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("objectifs_cabinet")
-        .select("*")
-        .is("client_id", null)
-        .order("domaine", { ascending: true });
-
-      if (error) throw error;
+      const allData = await dbApi.list<Objectif>("objectifs_cabinet", {
+        orderBy: "domaine",
+        orderAsc: true,
+        limit: 500,
+      });
+      const data = allData.filter(
+        (o: any) => o.client_id === null || o.client_id === undefined,
+      );
       setObjectifs(data || []);
     } catch (err) {
       console.error("Erreur chargement:", err);
@@ -206,31 +213,26 @@ const SuiviObjectifs: React.FC = () => {
 
   const handleAdd = async () => {
     if (!newRow.domaine || !newRow.objectif_general) {
-      alert("Veuillez remplir au moins le Domaine et l'Objectif général.");
+      notify.error("Veuillez remplir au moins le Domaine et l'Objectif général.");
       return;
     }
     setSaving(true);
     try {
-      const { data, error } = await supabase
-        .from("objectifs_cabinet")
-        .insert({
-          domaine: newRow.domaine || "",
-          objectif_general: newRow.objectif_general || "",
-          objectif_chiffre: newRow.objectif_chiffre || "",
-          collaborateurs_concernes: newRow.collaborateurs_concernes || "",
-          traduction_objectif_collab: newRow.traduction_objectif_collab || "",
-          mise_en_place_suivi: newRow.mise_en_place_suivi || "",
-          client_id: null,
-        })
-        .select()
-        .single();
+      const data = await dbApi.create<Objectif>("objectifs_cabinet", {
+        domaine: newRow.domaine || "",
+        objectif_general: newRow.objectif_general || "",
+        objectif_chiffre: newRow.objectif_chiffre || "",
+        collaborateurs_concernes: newRow.collaborateurs_concernes || "",
+        traduction_objectif_collab: newRow.traduction_objectif_collab || "",
+        mise_en_place_suivi: newRow.mise_en_place_suivi || "",
+        client_id: null,
+      });
 
-      if (error) throw error;
       setObjectifs([...objectifs, data]);
       setNewRow({});
     } catch (err) {
       console.error("Erreur ajout:", err);
-      alert("Erreur lors de l'ajout.");
+      notify.error("Erreur lors de l'ajout.");
     } finally {
       setSaving(false);
     }
@@ -243,37 +245,36 @@ const SuiviObjectifs: React.FC = () => {
   ) => {
     try {
       setSaving(true);
-      const { error } = await supabase
-        .from("objectifs_cabinet")
-        .update({ [field]: value })
-        .eq("id", id);
+      await dbApi.update("objectifs_cabinet", id, { [field]: value });
 
-      if (error) throw error;
       setObjectifs(
         objectifs.map((o) => (o.id === id ? { ...o, [field]: value } : o)),
       );
     } catch (err) {
       console.error("Erreur mise à jour:", err);
-      alert("Erreur lors de la mise à jour.");
+      notify.error("Erreur lors de la mise à jour.");
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Voulez-vous vraiment supprimer cette ligne ?")) return;
+    const confirmed = await confirm({
+      title: "Supprimer cette ligne ?",
+      message: "Cette action est irréversible.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
       setSaving(true);
-      const { error } = await supabase
-        .from("objectifs_cabinet")
-        .delete()
-        .eq("id", id);
+      await dbApi.remove("objectifs_cabinet", id);
 
-      if (error) throw error;
       setObjectifs(objectifs.filter((o) => o.id !== id));
     } catch (err) {
       console.error("Erreur suppression:", err);
-      alert("Erreur lors de la suppression.");
+      notify.error("Erreur lors de la suppression.");
     } finally {
       setSaving(false);
     }
@@ -281,7 +282,7 @@ const SuiviObjectifs: React.FC = () => {
 
   const exportExcel = () => {
     if (objectifs.length === 0) {
-      alert("Aucun objectif à exporter.");
+      notify.warning("Aucun objectif à exporter.");
       return;
     }
 

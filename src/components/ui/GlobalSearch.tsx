@@ -12,7 +12,7 @@ import {
   CalendarDays,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import { useDebounce } from "../../hooks/useDebounce";
 
 interface SearchResult {
@@ -100,11 +100,10 @@ export function GlobalSearch() {
 
         // 1. Clients
         try {
-          const { data: clients } = await supabase
-            .from("clients")
-            .select("id, name")
-            .ilike("name", term)
-            .limit(5);
+          const clients = await dbApi.list("clients", {
+            filters: { name: term },
+            limit: 5,
+          });
           console.log("Clients trouvés:", clients?.length || 0);
           if (clients) {
             clients.forEach((c: any) => {
@@ -123,14 +122,14 @@ export function GlobalSearch() {
 
         // 2. Engagements
         try {
-          const { data: engagements } = await supabase
-            .from("engagements")
-            .select("id, code, subject")
-            .or(`code.ilike.${term}, subject.ilike.${term}`)
-            .limit(5);
+          const engagements = await dbApi.list("engagements", { limit: 5 });
           console.log("Engagements trouvés:", engagements?.length || 0);
-          if (engagements) {
-            engagements.forEach((e: any) => {
+          const q = debouncedQuery.toLowerCase();
+          (engagements || []).forEach((e: any) => {
+            if (
+              String(e.code || "").toLowerCase().includes(q) ||
+              String(e.subject || "").toLowerCase().includes(q)
+            ) {
               allResults.push({
                 id: e.id,
                 title: e.code || e.subject,
@@ -138,19 +137,18 @@ export function GlobalSearch() {
                 type: "engagement",
                 link: "/engagements",
               });
-            });
-          }
+            }
+          });
         } catch (e) {
           console.warn("Engagements error:", e);
         }
 
         // 3. Findings
         try {
-          const { data: findings } = await supabase
-            .from("findings")
-            .select("id, finding")
-            .ilike("finding", term)
-            .limit(5);
+          const findings = await dbApi.list("findings", {
+            filters: { finding: term },
+            limit: 5,
+          });
           console.log("Findings trouvés:", findings?.length || 0);
           if (findings) {
             findings.forEach((f: any) => {
@@ -169,11 +167,10 @@ export function GlobalSearch() {
 
         // 4. Stock
         try {
-          const { data: stockItems } = await supabase
-            .from("stock_items")
-            .select("id, item_name")
-            .ilike("item_name", term)
-            .limit(5);
+          const stockItems = await dbApi.list("stock_items", {
+            filters: { item_name: term },
+            limit: 5,
+          });
           console.log("Stock trouvés:", stockItems?.length || 0);
           if (stockItems) {
             stockItems.forEach((s: any) => {
@@ -192,11 +189,10 @@ export function GlobalSearch() {
 
         // 5. Leave
         try {
-          const { data: leaves } = await supabase
-            .from("leave_requests")
-            .select("id, employee_name")
-            .ilike("employee_name", term)
-            .limit(5);
+          const leaves = await dbApi.list("leave_requests", {
+            filters: { employee_name: term },
+            limit: 5,
+          });
           console.log("Leaves trouvés:", leaves?.length || 0);
           if (leaves) {
             leaves.forEach((l: any) => {
@@ -215,11 +211,10 @@ export function GlobalSearch() {
 
         // 6. Profiles (Team)
         try {
-          const { data: profiles } = await supabase
-            .from("profiles")
-            .select("id, full_name")
-            .ilike("full_name", term)
-            .limit(5);
+          const profiles = await dbApi.list("profiles", {
+            filters: { full_name: term },
+            limit: 5,
+          });
           console.log("Profiles trouvés:", profiles?.length || 0);
           if (profiles) {
             profiles.forEach((p: any) => {

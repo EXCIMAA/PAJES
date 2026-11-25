@@ -1,28 +1,36 @@
-import { supabase } from './supabase';
+import { dbApi } from './apiClient';
 import { mapInventoryToStockItem, mapStockItemRow } from './db-mappers';
 import type { StockItem } from '../types';
 
 export async function fetchStockItems(): Promise<{ data: StockItem[]; error: string | null }> {
-  const { data: stockData, error: stockError } = await supabase
-    .from('stock_items')
-    .select('*')
-    .order('created_at', { ascending: false });
+  try {
+    const stockData = await dbApi.list('stock_items', {
+      orderBy: 'created_at',
+      orderAsc: false,
+      limit: 500,
+    });
 
-  if (!stockError && stockData) {
-    return { data: stockData.map((row) => mapStockItemRow(row as Record<string, unknown>)), error: null };
+    return {
+      data: stockData.map((row) => mapStockItemRow(row as Record<string, unknown>)),
+      error: null,
+    };
+  } catch (stockError) {
+    try {
+      const inventoryData = await dbApi.list('inventory_items', {
+        orderBy: 'name',
+        orderAsc: true,
+        limit: 500,
+      });
+
+      return {
+        data: inventoryData.map((row) => mapInventoryToStockItem(row as Record<string, unknown>)),
+        error: null,
+      };
+    } catch (inventoryError: any) {
+      return {
+        data: [],
+        error: inventoryError?.message ?? String(inventoryError),
+      };
+    }
   }
-
-  const { data: inventoryData, error: inventoryError } = await supabase
-    .from('inventory_items')
-    .select('*')
-    .order('name', { ascending: true });
-
-  if (inventoryError) {
-    return { data: [], error: inventoryError.message };
-  }
-
-  return {
-    data: (inventoryData ?? []).map((row) => mapInventoryToStockItem(row as Record<string, unknown>)),
-    error: null,
-  };
 }

@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import * as XLSX from "xlsx";
+import { useNotification } from "../../contexts/NotificationContext";
 
 // ==================== STYLED COMPONENTS (thème sombre) ====================
 
@@ -566,6 +567,7 @@ const PlanningClient: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const { notify } = useNotification();
   const [activeTab, setActiveTab] = useState<TabKey>("general");
   const [isEditing, setIsEditing] = useState<boolean>(true);
   const [selectedMonth, setSelectedMonth] = useState<string>("tous");
@@ -583,14 +585,11 @@ const PlanningClient: React.FC = () => {
     const fetchClients = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase
-          .from("clients")
-          .select(
-            "id, client_code, name, industry, contact_person, email, phone, address, tax_number, fiscal_year_end, status",
-          )
-          .order("name");
+        const data = await dbApi.list<any>("clients", {
+          orderBy: "name",
+          limit: 500,
+        });
 
-        if (error) throw error;
         setClients(data || []);
         if (data && data.length > 0) {
           setSelectedClientId(data[0].id);
@@ -614,13 +613,8 @@ const PlanningClient: React.FC = () => {
     const fetchClientData = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase
-          .from("clients")
-          .select("*")
-          .eq("id", selectedClientId)
-          .single();
+        const data = await dbApi.get<any>("clients", selectedClientId);
 
-        if (error) throw error;
         setClientData(data);
         setError(null);
       } catch (err: any) {
@@ -635,13 +629,12 @@ const PlanningClient: React.FC = () => {
     // Chargement des échéances
     const fetchEcheances = async () => {
       try {
-        const { data, error } = await supabase
-          .from("echeances")
-          .select("*")
-          .eq("client_id", selectedClientId)
-          .order("mois");
+        const data = await dbApi.list<any>("echeances", {
+          filters: { client_id: selectedClientId },
+          orderBy: "mois",
+          limit: 500,
+        });
 
-        if (error) throw error;
         if (data && data.length > 0) {
           setEcheances(data);
         } else {
@@ -689,15 +682,11 @@ const PlanningClient: React.FC = () => {
     if (!clientData || !selectedClientId) return;
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from("clients")
-        .update(clientData)
-        .eq("id", selectedClientId);
-      if (error) throw error;
-      alert("Client sauvegardé avec succès !");
+      await dbApi.update("clients", selectedClientId, clientData);
+      notify.success("Client sauvegardé avec succès !");
     } catch (err: any) {
       console.error("Erreur sauvegarde client:", err);
-      alert("Erreur : " + err.message);
+      notify.error("Erreur : " + err.message);
     } finally {
       setSaving(false);
     }
@@ -708,17 +697,21 @@ const PlanningClient: React.FC = () => {
     if (!selectedClientId) return;
     setSaving(true);
     try {
-      await supabase
-        .from("echeances")
-        .delete()
-        .eq("client_id", selectedClientId);
+      const existingEcheances = await dbApi.list<any>("echeances", {
+        filters: { client_id: selectedClientId },
+        limit: 500,
+      });
+      for (const row of existingEcheances) {
+        await dbApi.remove("echeances", row.id);
+      }
       const insertData = echeances.map(({ id, ...rest }) => rest);
-      const { error } = await supabase.from("echeances").insert(insertData);
-      if (error) throw error;
-      alert("Échéances sauvegardées !");
+      for (const row of insertData) {
+        await dbApi.create("echeances", row);
+      }
+      notify.success("Échéances sauvegardées !");
     } catch (err: any) {
       console.error("Erreur sauvegarde échéances:", err);
-      alert("Erreur : " + err.message);
+      notify.error("Erreur : " + err.message);
     } finally {
       setSaving(false);
     }
@@ -735,20 +728,14 @@ const PlanningClient: React.FC = () => {
     if (!selectedClientId) return;
     setLoading(true);
     try {
-      const { data: clientDataFresh, error: clientError } = await supabase
-        .from("clients")
-        .select("*")
-        .eq("id", selectedClientId)
-        .single();
-      if (clientError) throw clientError;
+      const clientDataFresh = await dbApi.get<any>("clients", selectedClientId);
       setClientData(clientDataFresh);
 
-      const { data: echeancesFresh, error: echeancesError } = await supabase
-        .from("echeances")
-        .select("*")
-        .eq("client_id", selectedClientId)
-        .order("mois");
-      if (echeancesError) throw echeancesError;
+      const echeancesFresh = await dbApi.list<any>("echeances", {
+        filters: { client_id: selectedClientId },
+        orderBy: "mois",
+        limit: 500,
+      });
       if (echeancesFresh && echeancesFresh.length > 0) {
         setEcheances(echeancesFresh);
       } else {
@@ -779,7 +766,7 @@ const PlanningClient: React.FC = () => {
       }
     } catch (err: any) {
       console.error("Erreur annulation:", err);
-      alert("Erreur lors de l'annulation : " + err.message);
+      notify.error("Erreur lors de l'annulation : " + err.message);
     } finally {
       setLoading(false);
     }
@@ -885,7 +872,7 @@ const PlanningClient: React.FC = () => {
 
   const handleExport = () => {
     if (!clientData) {
-      alert("Aucun client sélectionné.");
+      notify.error("Aucun client sélectionné.");
       return;
     }
 
@@ -1195,17 +1182,16 @@ const PlanningClient: React.FC = () => {
       }
 
       setClientData(updatedClient);
-      const { error: updateError } = await supabase
-        .from("clients")
-        .update(updatedClient)
-        .eq("id", selectedClientId);
-      if (updateError) throw updateError;
+      await dbApi.update("clients", selectedClientId, updatedClient);
 
       if (importPreview.echeances && importPreview.echeances.length > 0) {
-        await supabase
-          .from("echeances")
-          .delete()
-          .eq("client_id", selectedClientId);
+        const existingEcheances = await dbApi.list<any>("echeances", {
+          filters: { client_id: selectedClientId },
+          limit: 500,
+        });
+        for (const row of existingEcheances) {
+          await dbApi.remove("echeances", row.id);
+        }
         const insertData = importPreview.echeances.map((e: any) => ({
           client_id: selectedClientId,
           mois: e.mois,
@@ -1215,15 +1201,14 @@ const PlanningClient: React.FC = () => {
           dsf_statut: e.dsf_statut,
           ag_statut: e.ag_statut,
         }));
-        const { error: insertError } = await supabase
-          .from("echeances")
-          .insert(insertData);
-        if (insertError) throw insertError;
-        const { data: freshEcheances } = await supabase
-          .from("echeances")
-          .select("*")
-          .eq("client_id", selectedClientId)
-          .order("mois");
+        for (const row of insertData) {
+          await dbApi.create("echeances", row);
+        }
+        const freshEcheances = await dbApi.list<any>("echeances", {
+          filters: { client_id: selectedClientId },
+          orderBy: "mois",
+          limit: 500,
+        });
         if (freshEcheances) setEcheances(freshEcheances);
       }
 

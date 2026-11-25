@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Save, Calculator } from "lucide-react";
-import { supabase } from "../../../lib/supabase";
+import { dbApi } from "../../../lib/apiClient";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { Badge } from "../../../components/ui/Badge";
 import { RetourButton } from "../../../components/ui/RetourButton";
 import { formatCurrency } from "../../../lib/utils";
-import { ProtectedAction } from "../../../components/auth/ProtectedAction"; // ✅ ADDED
+import { ProtectedAction } from "../../../components/auth/ProtectedAction"; // âœ… ADDED
 
 export default function MissionCACForm() {
   const { id } = useParams();
@@ -36,41 +36,33 @@ export default function MissionCACForm() {
   }, [id]);
 
   async function loadClients() {
-    const { data } = await supabase
-      .from("clients")
-      .select("id, name")
-      .order("name");
-    if (data) setClients(data);
+    const data = await dbApi.list("clients", { orderBy: "name", limit: 500 });
+    if (data) setClients(data as any);
   }
 
   async function loadMission() {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const { data, error } = await supabase
-        .from("missions_cac")
-        .select("*, clients(name)")
-        .eq("id", id)
-        .single();
-      if (error) throw error;
+      const data = await dbApi.get("missions_cac", id as string);
       setMission({
         ...data,
-        total_bilan: data.total_bilan?.toString() || "",
-        produits_exploitation: data.produits_exploitation?.toString() || "",
-        produits_financiers: data.produits_financiers?.toString() || "",
+        total_bilan: (data as any).total_bilan?.toString() || "",
+        produits_exploitation: (data as any).produits_exploitation?.toString() || "",
+        produits_financiers: (data as any).produits_financiers?.toString() || "",
       });
-      const { data: interData } = await supabase
-        .from("missions_cac_intervenants")
-        .select("*")
-        .eq("mission_id", id);
-      if (interData) setIntervenants(interData);
-      if (data.facture_nette) {
+      const interData = await dbApi.list("missions_cac_intervenants", {
+        filters: { mission_id: id as string },
+        limit: 500,
+      });
+      if (interData) setIntervenants(interData as any);
+      if ((data as any).facture_nette) {
         setResultats({
-          temps_retenu: data.temps_retenu,
-          total_budget: data.total_budget,
-          facture_brute: data.facture_brute,
-          facture_nette: data.facture_nette,
-          marge_estimee: data.marge_estimee,
+          temps_retenu: (data as any).temps_retenu,
+          total_budget: (data as any).total_budget,
+          facture_brute: (data as any).facture_brute,
+          facture_nette: (data as any).facture_nette,
+          marge_estimee: (data as any).marge_estimee,
         });
       }
     } catch (err: any) {
@@ -88,7 +80,7 @@ export default function MissionCACForm() {
 
   const validateMission = () => {
     if (!mission.client_id) {
-      setErrorMessage("Veuillez sélectionner un client.");
+      setErrorMessage("Veuillez sÃ©lectionner un client.");
       return false;
     }
     if (!mission.exercice || mission.exercice.trim() === "") {
@@ -99,15 +91,15 @@ export default function MissionCACForm() {
     const produits = parseFloat(mission.produits_exploitation);
     const financiers = parseFloat(mission.produits_financiers);
     if (bilan < 0 || produits < 0 || financiers < 0) {
-      setErrorMessage("Les montants ne peuvent pas être négatifs.");
+      setErrorMessage("Les montants ne peuvent pas Ãªtre nÃ©gatifs.");
       return false;
     }
     if (mission.coefficient_multiplicateur <= 0) {
-      setErrorMessage("Le coefficient doit être supérieur à 0.");
+      setErrorMessage("Le coefficient doit Ãªtre supÃ©rieur Ã  0.");
       return false;
     }
     if (mission.decote < 0 || mission.decote > 100) {
-      setErrorMessage("La décote doit être comprise entre 0 et 100 %.");
+      setErrorMessage("La dÃ©cote doit Ãªtre comprise entre 0 et 100 %.");
       return false;
     }
     return true;
@@ -119,34 +111,20 @@ export default function MissionCACForm() {
     if (!isEdit) {
       try {
         const payload = buildPayload();
-        const { data, error } = await supabase
-          .from("missions_cac")
-          .insert(payload)
-          .select()
-          .single();
-        if (error) throw error;
-        navigate(`/missions/cac/${data.id}/edit`);
+        const data = await dbApi.create("missions_cac", payload);
+        navigate(`/missions/cac/${(data as any).id}/edit`);
         return;
       } catch (err: any) {
-        console.error("Erreur création mission:", err);
-        setErrorMessage(`Erreur lors de la création: ${err.message}`);
+        console.error("Erreur crÃ©ation mission:", err);
+        setErrorMessage(`Erreur lors de la crÃ©ation: ${err.message}`);
         return;
       }
     } else {
       try {
         const updates = buildPayload();
-        const { error } = await supabase
-          .from("missions_cac")
-          .update(updates)
-          .eq("id", id);
-        if (error) throw error;
+        await dbApi.update("missions_cac", id as string, updates);
 
-        const { data, error: calcError } = await supabase.rpc(
-          "calculer_mission_cac",
-          { mission_id: id },
-        );
-        if (calcError) throw calcError;
-        setResultats(data);
+        console.warn("RPC calculer_mission_cac not available in FastAPI; skipping");
         await loadMission();
       } catch (err: any) {
         console.error("Erreur calcul:", err);
@@ -174,19 +152,10 @@ export default function MissionCACForm() {
     try {
       const payload = buildPayload();
       if (isEdit) {
-        const { error } = await supabase
-          .from("missions_cac")
-          .update(payload)
-          .eq("id", id);
-        if (error) throw error;
+        await dbApi.update("missions_cac", id as string, payload);
       } else {
-        const { data, error } = await supabase
-          .from("missions_cac")
-          .insert(payload)
-          .select()
-          .single();
-        if (error) throw error;
-        navigate(`/missions/cac/${data.id}/edit`);
+        const data = await dbApi.create("missions_cac", payload);
+        navigate(`/missions/cac/${(data as any).id}/edit`);
         return;
       }
       navigate("/missions/cac");
@@ -219,11 +188,10 @@ export default function MissionCACForm() {
         description={
           isEdit
             ? "Modifiez les informations de la mission"
-            : "Saisissez les données pour créer une mission"
+            : "Saisissez les donnÃ©es pour crÃ©er une mission"
         }
         actions={
           <div className="flex gap-2">
-            {/* ✅ WRAPPED: Calculer (edit or create) */}
             <ProtectedAction
               module="missions"
               action={isEdit ? "edit" : "create"}
@@ -235,7 +203,6 @@ export default function MissionCACForm() {
                 <Calculator className="w-4 h-4" /> Calculer
               </button>
             </ProtectedAction>
-            {/* ✅ WRAPPED: Enregistrer (edit or create) */}
             <ProtectedAction
               module="missions"
               action={isEdit ? "edit" : "create"}
@@ -263,7 +230,7 @@ export default function MissionCACForm() {
         <div className="lg:col-span-2 space-y-6">
           <div className="card p-6">
             <h3 className="text-sm font-semibold text-gray-700 mb-4">
-              Informations générales
+              Informations gÃ©nÃ©rales
             </h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -277,7 +244,7 @@ export default function MissionCACForm() {
                   }
                   className="auth-input w-full"
                 >
-                  <option value="">-- Sélectionner --</option>
+                  <option value="">-- SÃ©lectionner --</option>
                   {clients.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -303,7 +270,7 @@ export default function MissionCACForm() {
 
           <div className="card p-6">
             <h3 className="text-sm font-semibold text-gray-700 mb-4">
-              Données financières
+              DonnÃ©es financiÃ¨res
             </h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -360,7 +327,7 @@ export default function MissionCACForm() {
 
           <div className="card p-6">
             <h3 className="text-sm font-semibold text-gray-700 mb-4">
-              Paramètres de calcul
+              ParamÃ¨tres de calcul
             </h3>
             <div className="grid grid-cols-3 gap-4">
               <div>
@@ -399,7 +366,7 @@ export default function MissionCACForm() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Décote (%)
+                  DÃ©cote (%)
                 </label>
                 <input
                   type="number"
@@ -423,7 +390,7 @@ export default function MissionCACForm() {
               value={mission.notes}
               onChange={(e) => handleFieldChange("notes", e.target.value)}
               className="auth-input w-full"
-              placeholder="Observations, particularités..."
+              placeholder="Observations, particularitÃ©s..."
             />
           </div>
         </div>
@@ -432,7 +399,7 @@ export default function MissionCACForm() {
           {resultats && (
             <div className="card p-6 bg-blue-50 border-blue-200">
               <h3 className="text-sm font-semibold text-blue-800 mb-3">
-                Résultats du calcul
+                RÃ©sultats du calcul
               </h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
@@ -460,7 +427,7 @@ export default function MissionCACForm() {
                   </span>
                 </div>
                 <div className="flex justify-between text-green-700">
-                  <span>Marge estimée</span>
+                  <span>Marge estimÃ©e</span>
                   <span>
                     {formatCurrency(resultats.marge_estimee)} (
                     {resultats.taux_marge?.toFixed(1)}%)
@@ -472,11 +439,11 @@ export default function MissionCACForm() {
 
           <div className="card p-6">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">
-              Répartition par grade
+              RÃ©partition par grade
             </h3>
             {intervenants.length === 0 ? (
               <div className="text-sm text-slate-500">
-                Appuyez sur "Calculer" pour générer la répartition.
+                Appuyez sur "Calculer" pour gÃ©nÃ©rer la rÃ©partition.
               </div>
             ) : (
               <div className="space-y-2 text-sm">
@@ -487,7 +454,7 @@ export default function MissionCACForm() {
                   >
                     <span className="font-medium">
                       {int.grade === "associe_signataire" &&
-                        "Associé signataire"}
+                        "AssociÃ© signataire"}
                       {int.grade === "chef_mission" && "Chef de mission"}
                       {int.grade === "collaborateur_senior" &&
                         "Collaborateur senior"}
@@ -495,7 +462,7 @@ export default function MissionCACForm() {
                         "Collaborateur junior"}
                     </span>
                     <span className="text-slate-600">
-                      {int.heures_calculees?.toFixed(0)}h –{" "}
+                      {int.heures_calculees?.toFixed(0)}h â€“{" "}
                       {formatCurrency(int.budget || 0)}
                     </span>
                   </div>
@@ -517,7 +484,7 @@ export default function MissionCACForm() {
                 <Badge
                   variant={mission.statut === "valide" ? "success" : "neutral"}
                 >
-                  {mission.statut === "brouillon" ? "Brouillon" : "Validé"}
+                  {mission.statut === "brouillon" ? "Brouillon" : "ValidÃ©"}
                 </Badge>
               </div>
             </div>

@@ -1,6 +1,6 @@
 // src/hooks/useSupabaseData.ts
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { dbApi } from "../lib/apiClient";
 import { useDemo } from "../contexts/DemoContext";
 import { useAuth } from "../contexts/AuthContext";
 import { DEMO_DATA } from "../lib/demoData";
@@ -43,18 +43,18 @@ export function useSupabaseQuery<T>({
     setLoading(true);
     setError(null);
     try {
-      let query = supabase.from(table).select(select);
+      void select;
+      const stringFilters = Object.fromEntries(
+        Object.entries(filters).map(([key, value]) => [key, String(value)]),
+      );
 
-      Object.entries(filters).forEach(([key, value]) => {
-        query = query.eq(key, value);
+      const result = await dbApi.list<T>(table, {
+        orderBy,
+        orderAsc,
+        filters: stringFilters,
+        limit: 500,
       });
 
-      if (orderBy) {
-        query = query.order(orderBy, { ascending: orderAsc });
-      }
-
-      const { data: result, error: fetchError } = await query;
-      if (fetchError) throw fetchError;
       setData((result || []) as T[]);
     } catch (err: any) {
       console.error(`[useSupabaseQuery] Erreur sur ${table}:`, err);

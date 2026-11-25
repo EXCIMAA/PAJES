@@ -8,19 +8,31 @@ const USER_ROLE_KEY = "pajes_user_role";
 
 // ============================================================
 // PUBLIC PAGES — Nothing is blocked here
+//
+// Authentication flows (login, signup, activation, password reset) must stay
+// fully interactive for a restricted account, otherwise the user cannot
+// activate the account or read the error explaining why. Only the
+// authenticated app shell is write-blocked.
 // ============================================================
+const PUBLIC_PATHS = [
+  "/login",
+  "/signup",
+  "/sign-in",
+  "/sign-up",
+  "/activate-account",
+  "/reset-password",
+  "/forgot-password",
+  "/legal",
+  "/pending-approval",
+] as const;
+
+const PUBLIC_PREFIXES = ["/auth"] as const;
+
 function isPublicPage(): boolean {
   if (typeof window === "undefined") return false;
-  const path = window.location.pathname.toLowerCase();
-  return (
-    path === "/login" ||
-    path === "/signup" ||
-    path === "/sign-in" ||
-    path === "/sign-up" ||
-    path === "/legal" ||
-    path === "/pending-approval" ||
-    path.startsWith("/auth")
-  );
+  const path = window.location.pathname.toLowerCase().replace(/\/+$/, "") || "/";
+  if (PUBLIC_PATHS.some((publicPath) => publicPath === path)) return true;
+  return PUBLIC_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
 // ============================================================
@@ -121,6 +133,10 @@ export function WriteBlocker() {
       let el: Element | null = target;
       while (el && el !== document.body) {
         if (isActionableElement(el)) {
+          // Exception: explicitly public action buttons (e.g. account activation)
+          // are clickable by anyone, including restricted "user" accounts.
+          if (el.getAttribute("data-public-action") === "true") return;
+
           if (el.getAttribute("data-public-navigation") === "true") return;
 
           e.preventDefault();

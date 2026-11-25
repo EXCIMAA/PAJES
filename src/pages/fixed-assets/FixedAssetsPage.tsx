@@ -1,6 +1,6 @@
 // src/pages/fixed-assets/FixedAssetsPage.tsx
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Search,
   Plus,
@@ -12,12 +12,12 @@ import {
   List,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useSupabaseQuery } from "../../hooks/useSupabaseData";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { Badge } from "../../components/ui/Badge";
 import { cn, formatCurrency } from "../../lib/utils";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import { addNotification } from "../../lib/notifications";
+import { useNotification, useConfirm } from "../../contexts/NotificationContext";
 import type { FixedAsset } from "../../types";
 import { ProtectedAction } from "../../components/auth/ProtectedAction"; // ✅ ADDED
 
@@ -109,6 +109,8 @@ export function FixedAssetsPage() {
   >("info");
 
   const { t } = useTranslation();
+  const { notify } = useNotification();
+  const confirm = useConfirm();
 
   const statusLabels: Record<string, string> = {
     Draft: t("status.draft"),
@@ -210,15 +212,27 @@ export function FixedAssetsPage() {
     status: "Draft",
   });
 
-  const {
-    data: assetsRaw = [],
-    loading,
-    refetch,
-  } = useSupabaseQuery<FixedAsset>({
-    table: "fixed_assets",
-    orderBy: "created_at",
-    orderAsc: false,
-  });
+  const [assetsRaw, setAssetsRaw] = useState<FixedAsset[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refetch = async () => {
+    try {
+      const data = await dbApi.list<FixedAsset>("fixed_assets", {
+        orderBy: "created_at",
+        orderAsc: false,
+        limit: 500,
+      });
+      setAssetsRaw(data);
+    } catch (err) {
+      console.error("Erreur chargement des immobilisations:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void refetch();
+  }, []);
 
   const assets: ExtendedFixedAsset[] = assetsRaw.map((asset) => {
     const status = (asset.status || "Draft") as AssetStatus;
@@ -350,42 +364,37 @@ export function FixedAssetsPage() {
         status: "Draft" as AssetStatus,
       };
 
-      const { error } = await supabase.from("fixed_assets").insert([payload]);
-      if (error) {
-        alert("Erreur : " + error.message);
-        console.error("Insert error:", error);
-      } else {
-        void addNotification({
-          title: t("fixedAssets.notifications.createdTitle"),
-          message: t("fixedAssets.notifications.createdMessage", {
-            name: payload.asset_name,
-          }),
-          type: "asset",
-        });
-        refetch();
-        setShowCreateModal(false);
-        setFormData({
-          asset_name: "",
-          category: "",
-          nature: "",
-          family: "",
-          location: "",
-          invoice_number: "",
-          acquisition_date: "",
-          service_date: "",
-          purchase_value: 0,
-          currency: "XAF",
-          account_code: "",
-          acquisition_mode: "Achat",
-          residual_value: 0,
-          useful_life_years: 10,
-          depreciation_rate: undefined,
-          amortization_method: "lineaire",
-          status: "Draft",
-        });
-      }
+      await dbApi.create("fixed_assets", payload);
+      void addNotification({
+        title: t("fixedAssets.notifications.createdTitle"),
+        message: t("fixedAssets.notifications.createdMessage", {
+          name: payload.asset_name,
+        }),
+        type: "asset",
+      });
+      refetch();
+      setShowCreateModal(false);
+      setFormData({
+        asset_name: "",
+        category: "",
+        nature: "",
+        family: "",
+        location: "",
+        invoice_number: "",
+        acquisition_date: "",
+        service_date: "",
+        purchase_value: 0,
+        currency: "XAF",
+        account_code: "",
+        acquisition_mode: "Achat",
+        residual_value: 0,
+        useful_life_years: 10,
+        depreciation_rate: undefined,
+        amortization_method: "lineaire",
+        status: "Draft",
+      });
     } catch (err: any) {
-      alert("Erreur inattendue : " + err.message);
+      notify.error("Erreur inattendue : " + err.message);
       console.error(err);
     }
   };
@@ -413,57 +422,52 @@ export function FixedAssetsPage() {
         amortization_method: formData.amortization_method || "lineaire",
       };
 
-      const { error } = await supabase
-        .from("fixed_assets")
-        .update(payload)
-        .eq("id", selectedAsset.id);
-      if (error) {
-        alert("Erreur : " + error.message);
-        console.error("Update error:", error);
-      } else {
-        void addNotification({
-          title: t("fixedAssets.notifications.updatedTitle"),
-          message: t("fixedAssets.notifications.updatedMessage", {
-            name: payload.asset_name,
-          }),
-          type: "asset",
-        });
-        refetch();
-        setShowDetailModal(false);
-        setSelectedAsset(null);
-        setEditMode(false);
-      }
+      await dbApi.update("fixed_assets", selectedAsset.id, payload);
+      void addNotification({
+        title: t("fixedAssets.notifications.updatedTitle"),
+        message: t("fixedAssets.notifications.updatedMessage", {
+          name: payload.asset_name,
+        }),
+        type: "asset",
+      });
+      refetch();
+      setShowDetailModal(false);
+      setSelectedAsset(null);
+      setEditMode(false);
     } catch (err: any) {
-      alert("Erreur inattendue : " + err.message);
+      notify.error("Erreur inattendue : " + err.message);
       console.error(err);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm(t("fixedAssets.confirmDelete"))) return;
-    const { error } = await supabase.from("fixed_assets").delete().eq("id", id);
-    if (error) {
-      alert("Erreur : " + error.message);
-      console.error("Delete error:", error);
-    } else {
+    const confirmed = await confirm({
+      title: t("fixedAssets.confirmDelete"),
+      message: "Cette action est irréversible.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
+    try {
+      await dbApi.remove("fixed_assets", id);
       void addNotification({
         title: t("fixedAssets.notifications.deletedTitle"),
         message: t("fixedAssets.notifications.deletedMessage"),
         type: "asset",
       });
       refetch();
+    } catch (err: any) {
+      notify.error("Erreur : " + err.message);
+      console.error("Delete error:", err);
     }
   };
 
   const handleValidate = async (id: string) => {
-    const { error } = await supabase
-      .from("fixed_assets")
-      .update({ status: "Active" as AssetStatus })
-      .eq("id", id);
-    if (error) {
-      alert("Erreur : " + error.message);
-      console.error("Validate error:", error);
-    } else {
+    try {
+      await dbApi.update("fixed_assets", id, {
+        status: "Active" as AssetStatus,
+      });
       try {
         await generateMutation.mutateAsync(id);
       } catch (err) {
@@ -476,18 +480,17 @@ export function FixedAssetsPage() {
         type: "asset",
       });
       refetch();
+    } catch (err: any) {
+      notify.error("Erreur : " + err.message);
+      console.error("Validate error:", err);
     }
   };
 
   const handleStatusChange = async (id: string, newStatus: string) => {
-    const { error } = await supabase
-      .from("fixed_assets")
-      .update({ status: newStatus as AssetStatus })
-      .eq("id", id);
-    if (error) {
-      alert("Erreur : " + error.message);
-      console.error("Status update error:", error);
-    } else {
+    try {
+      await dbApi.update("fixed_assets", id, {
+        status: newStatus as AssetStatus,
+      });
       if (newStatus === "Active") {
         try {
           await generateMutation.mutateAsync(id);
@@ -503,6 +506,9 @@ export function FixedAssetsPage() {
         type: "asset",
       });
       refetch();
+    } catch (err: any) {
+      notify.error("Erreur : " + err.message);
+      console.error("Status update error:", err);
     }
   };
 

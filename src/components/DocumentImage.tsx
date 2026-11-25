@@ -12,7 +12,7 @@ interface DocumentImageProps {
 }
 
 /**
- * Affiche une image depuis un bucket privé Supabase
+ * Affiche une image depuis un bucket privé
  * en générant automatiquement une Signed URL (valide 1h).
  */
 export function DocumentImage({

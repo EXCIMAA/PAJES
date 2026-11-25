@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import * as XLSX from "xlsx";
+import { useNotification } from "../../contexts/NotificationContext";
 
 // ==================== STYLED COMPONENTS ====================
 
@@ -435,17 +436,17 @@ const DemandeDocumentsClient: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const { notify } = useNotification();
 
   // Chargement des clients
   useEffect(() => {
     const fetchClients = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase
-          .from("clients")
-          .select("id, client_code, name, status, niveau_risque")
-          .order("name");
-        if (error) throw error;
+        const data = await dbApi.list<Client>("clients", {
+          orderBy: "name",
+          limit: 500,
+        });
         setClients(data || []);
         if (data && data.length > 0) setSelectedClientId(data[0].id);
       } catch (err: any) {
@@ -465,25 +466,17 @@ const DemandeDocumentsClient: React.FC = () => {
       try {
         setLoading(true);
         // Infos client
-        const { data: clientInfo } = await supabase
-          .from("clients")
-          .select("id, client_code, name, status, niveau_risque")
-          .eq("id", selectedClientId)
-          .single();
+        const clientInfo = await dbApi.get<Client>("clients", selectedClientId);
         setClientData(clientInfo);
 
         // Données documents pour le type actif
-        const { data: docData, error } = await supabase
-          .from("documents_client")
-          .select("*")
-          .eq("client_id", selectedClientId)
-          .eq("type", activeTab)
-          .single();
+        const docData = await dbApi.list<DocumentData>("documents_client", {
+          filters: { client_id: selectedClientId, type: activeTab },
+          limit: 500,
+        });
 
-        if (error && error.code !== "PGRST116") throw error;
-
-        if (docData) {
-          setData(docData);
+        if (docData.length > 0) {
+          setData(docData[0]);
         } else {
           // Créer un objet JSON avec tous les documents à false
           const docList =
@@ -539,26 +532,27 @@ const DemandeDocumentsClient: React.FC = () => {
     if (!data || !selectedClientId) return;
     setSaving(true);
     try {
-      const { data: existing } = await supabase
-        .from("documents_client")
-        .select("id")
-        .eq("client_id", selectedClientId)
-        .eq("type", activeTab)
-        .single();
+      const existing = await dbApi.list<DocumentData>("documents_client", {
+        filters: { client_id: selectedClientId, type: activeTab },
+        limit: 500,
+      });
 
-      if (existing) {
-        await supabase
-          .from("documents_client")
-          .update(data)
-          .eq("client_id", selectedClientId)
-          .eq("type", activeTab);
+      if (existing.length > 0) {
+        await dbApi.update(
+          "documents_client",
+          existing[0].id as string,
+          data as unknown as Record<string, unknown>,
+        );
       } else {
-        await supabase.from("documents_client").insert([data]);
+        await dbApi.create(
+          "documents_client",
+          data as unknown as Record<string, unknown>,
+        );
       }
-      alert("Données sauvegardées !");
+      notify.success("Données sauvegardées !");
     } catch (err: any) {
       console.error(err);
-      alert("Erreur : " + err.message);
+      notify.error("Erreur : " + err.message);
     } finally {
       setSaving(false);
     }
@@ -569,15 +563,12 @@ const DemandeDocumentsClient: React.FC = () => {
     if (!selectedClientId) return;
     setLoading(true);
     try {
-      const { data: docData, error } = await supabase
-        .from("documents_client")
-        .select("*")
-        .eq("client_id", selectedClientId)
-        .eq("type", activeTab)
-        .single();
-      if (error && error.code !== "PGRST116") throw error;
-      if (docData) {
-        setData(docData);
+      const docData = await dbApi.list<DocumentData>("documents_client", {
+        filters: { client_id: selectedClientId, type: activeTab },
+        limit: 500,
+      });
+      if (docData.length > 0) {
+        setData(docData[0]);
       } else {
         // Réinitialiser avec tous les documents à false
         const docList =
@@ -599,7 +590,7 @@ const DemandeDocumentsClient: React.FC = () => {
       }
     } catch (err: any) {
       console.error(err);
-      alert("Erreur annulation : " + err.message);
+      notify.error("Erreur annulation : " + err.message);
     } finally {
       setLoading(false);
     }

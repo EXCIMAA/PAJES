@@ -8,10 +8,7 @@ import { PermissionProvider } from "./contexts/PermissionContext";
 import { CountryProvider } from "./contexts/CountryContext";
 import { DatabaseProvider } from "./contexts/DatabaseContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { supabase } from "./lib/supabase";
 import "./index.css";
-
-(window as any).supabase = supabase;
 
 const queryClient = new QueryClient(); // 👈 création du client
 

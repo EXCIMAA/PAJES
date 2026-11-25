@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 import { useAuth } from "../../contexts/AuthContext";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import {
   User,
   Mail,
@@ -111,19 +111,10 @@ export const ProfilePage: React.FC = () => {
       }
 
       try {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select(
-            "full_name, email, role, department, phone, avatar_url, created_at, hire_date",
-          )
-          .eq("id", user.id)
-          .single();
-
-        if (error) throw error;
+        const data = await dbApi.get<Profile>("profiles", user.id);
         setProfile(data);
       } catch (err) {
         console.error("Erreur chargement profil:", err);
-        // Si le profil n'existe pas, on peut afficher un message
       } finally {
         setLoading(false);
       }

@@ -1,8 +1,9 @@
 // src/pages/manuel/ControlesEssentiels.tsx
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import * as XLSX from "xlsx";
+import { useNotification } from "../../contexts/NotificationContext";
 
 // ==================== STYLES (avec props préfixées $) ====================
 const Container = styled.div`
@@ -422,6 +423,7 @@ const ControlesEssentiels: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const { notify } = useNotification();
 
   // Helper pour les erreurs
   const getErrorMessage = (err: unknown): string => {
@@ -435,13 +437,10 @@ const ControlesEssentiels: React.FC = () => {
     const fetchClients = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase
-          .from("clients")
-          .select(
-            "id, client_code, name, status, niveau_risque, date_cloture, periodicite",
-          )
-          .order("name");
-        if (error) throw error;
+        const data = await dbApi.list<Client>("clients", {
+          orderBy: "name",
+          limit: 500,
+        });
         setClients(data || []);
         if (data && data.length > 0) setSelectedClientId(data[0].id);
       } catch (err) {
@@ -466,12 +465,13 @@ const ControlesEssentiels: React.FC = () => {
   const fetchStatuses = async (clientId: string) => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("controles_essentiels_status")
-        .select("control_id, status, impact")
-        .eq("client_id", clientId);
-
-      if (error) throw error;
+      const data = await dbApi.list<ControlStatus>(
+        "controles_essentiels_status",
+        {
+          filters: { client_id: clientId },
+          limit: 500,
+        },
+      );
 
       // Initialiser tous les statuts avec les valeurs existantes ou vides
       const allControlIds = CONTROLS.flatMap((cat) => cat.items);
@@ -519,24 +519,28 @@ const ControlesEssentiels: React.FC = () => {
       }));
 
       // Supprimer les anciens statuts
-      const { error: delError } = await supabase
-        .from("controles_essentiels_status")
-        .delete()
-        .eq("client_id", selectedClientId);
-
-      if (delError) throw delError;
+      const existing = await dbApi.list<{ id: string }>(
+        "controles_essentiels_status",
+        {
+          filters: { client_id: selectedClientId },
+          limit: 500,
+        },
+      );
+      await Promise.all(
+        existing.map((row) =>
+          dbApi.remove("controles_essentiels_status", row.id),
+        ),
+      );
 
       // Insérer les nouveaux
-      const { error: insError } = await supabase
-        .from("controles_essentiels_status")
-        .insert(updates);
+      await Promise.all(
+        updates.map((u) => dbApi.create("controles_essentiels_status", u)),
+      );
 
-      if (insError) throw insError;
-
-      alert("Contrôles sauvegardés !");
+      notify.success("Contrôles sauvegardés !");
     } catch (err) {
       console.error("Erreur sauvegarde:", err);
-      alert("Erreur : " + getErrorMessage(err));
+      notify.error("Erreur : " + getErrorMessage(err));
     } finally {
       setSaving(false);
     }

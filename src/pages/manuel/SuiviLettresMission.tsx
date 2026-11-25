@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import * as XLSX from "xlsx";
+import { useNotification } from "../../contexts/NotificationContext";
 
 // ==================== STYLED COMPONENTS ====================
 
@@ -181,13 +182,14 @@ const SuiviLettresMission: React.FC = () => {
   });
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
+  const { notify } = useNotification();
 
   useEffect(() => {
     const fetchClients = async () => {
-      const { data } = await supabase
-        .from("clients")
-        .select("id, client_code, name")
-        .order("name");
+      const data = await dbApi.list<Client>("clients", {
+        orderBy: "name",
+        limit: 500,
+      });
       if (data) setClients(data);
       if (data && data.length > 0) {
         setSelectedClientId(data[0].id);
@@ -202,24 +204,26 @@ const SuiviLettresMission: React.FC = () => {
     if (!selectedClientId) return;
     const fetchData = async () => {
       setLoading(true);
-      const { data: params } = await supabase
-        .from("lettres_mission_parametres")
-        .select("*")
-        .eq("client_id", selectedClientId)
-        .single();
+      const params = (
+        await dbApi.list("lettres_mission_parametres", {
+          filters: { client_id: selectedClientId },
+          limit: 500,
+        })
+      )[0] || null;
       if (params) {
         setParametres({
-          alert_jours_1: params.alert_jours_1,
-          alert_jours_2: params.alert_jours_2,
-          redacteurs: params.redacteurs || [],
-          natures_missions: params.natures_missions || [],
+          alert_jours_1: (params as any).alert_jours_1,
+          alert_jours_2: (params as any).alert_jours_2,
+          redacteurs: (params as any).redacteurs || [],
+          natures_missions: (params as any).natures_missions || [],
         });
       }
-      const { data: lettresData } = await supabase
-        .from("lettres_mission")
-        .select("*")
-        .eq("client_id", selectedClientId)
-        .order("date_envoi", { ascending: false });
+      const lettresData = await dbApi.list<Lettre>("lettres_mission", {
+        filters: { client_id: selectedClientId },
+        orderBy: "date_envoi",
+        orderAsc: false,
+        limit: 500,
+      });
       if (lettresData) setLettres(lettresData);
       setLoading(false);
     };
@@ -242,11 +246,12 @@ const SuiviLettresMission: React.FC = () => {
     if (!selectedClientId) return;
     setSaving(true);
     try {
-      const { data: existing } = await supabase
-        .from("lettres_mission_parametres")
-        .select("id")
-        .eq("client_id", selectedClientId)
-        .single();
+      const existing = (
+        await dbApi.list("lettres_mission_parametres", {
+          filters: { client_id: selectedClientId },
+          limit: 500,
+        })
+      )[0] || null;
       const paramsToSave = {
         client_id: selectedClientId,
         alert_jours_1: parametres.alert_jours_1,
@@ -255,27 +260,34 @@ const SuiviLettresMission: React.FC = () => {
         natures_missions: parametres.natures_missions,
       };
       if (existing) {
-        await supabase
-          .from("lettres_mission_parametres")
-          .update(paramsToSave)
-          .eq("client_id", selectedClientId);
+        await dbApi.update(
+          "lettres_mission_parametres",
+          (existing as any).id,
+          paramsToSave as any,
+        );
       } else {
-        await supabase
-          .from("lettres_mission_parametres")
-          .insert([paramsToSave]);
+        await dbApi.create(
+          "lettres_mission_parametres",
+          paramsToSave as any,
+        );
       }
-      await supabase
-        .from("lettres_mission")
-        .delete()
-        .eq("client_id", selectedClientId);
+      const existingLettres = await dbApi.list("lettres_mission", {
+        filters: { client_id: selectedClientId },
+        limit: 500,
+      });
+      for (const row of existingLettres) {
+        await dbApi.remove("lettres_mission", (row as any).id);
+      }
       if (lettres.length > 0) {
         const toInsert = lettres.map(({ id, ...rest }) => rest);
-        await supabase.from("lettres_mission").insert(toInsert);
+        for (const l of toInsert) {
+          await dbApi.create("lettres_mission", l as any);
+        }
       }
-      alert("Données sauvegardées !");
+      notify.success("Données sauvegardées !");
     } catch (err: any) {
       console.error(err);
-      alert("Erreur : " + err.message);
+      notify.error("Erreur : " + err.message);
     } finally {
       setSaving(false);
     }
@@ -285,24 +297,26 @@ const SuiviLettresMission: React.FC = () => {
     if (!selectedClientId) return;
     setLoading(true);
     try {
-      const { data: params } = await supabase
-        .from("lettres_mission_parametres")
-        .select("*")
-        .eq("client_id", selectedClientId)
-        .single();
+      const params = (
+        await dbApi.list("lettres_mission_parametres", {
+          filters: { client_id: selectedClientId },
+          limit: 500,
+        })
+      )[0] || null;
       if (params) {
         setParametres({
-          alert_jours_1: params.alert_jours_1,
-          alert_jours_2: params.alert_jours_2,
-          redacteurs: params.redacteurs || [],
-          natures_missions: params.natures_missions || [],
+          alert_jours_1: (params as any).alert_jours_1,
+          alert_jours_2: (params as any).alert_jours_2,
+          redacteurs: (params as any).redacteurs || [],
+          natures_missions: (params as any).natures_missions || [],
         });
       }
-      const { data: lettresData } = await supabase
-        .from("lettres_mission")
-        .select("*")
-        .eq("client_id", selectedClientId)
-        .order("date_envoi", { ascending: false });
+      const lettresData = await dbApi.list<Lettre>("lettres_mission", {
+        filters: { client_id: selectedClientId },
+        orderBy: "date_envoi",
+        orderAsc: false,
+        limit: 500,
+      });
       if (lettresData) setLettres(lettresData);
     } catch (err) {
       console.error(err);

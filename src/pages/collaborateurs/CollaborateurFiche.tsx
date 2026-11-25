@@ -2,24 +2,16 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi, fileApi } from "../../lib/apiClient";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { useAuth } from "../../contexts/AuthContext";
+import { useNotification, useConfirm } from "../../contexts/NotificationContext";
 import { DocumentLink } from "../../components/DocumentLink";
 import { DocumentImage } from "../../components/DocumentImage";
 import { ProtectedAction } from "../../components/auth/ProtectedAction";
 import { canAccessRecordSafe } from "../../lib/permissions";
 import { usePermission } from "../../hooks/usePermission";
-
-// ==================== HELPER: SANITIZE FILENAME ====================
-const sanitizeFilename = (name: string) => {
-  return name
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9.-]/g, "_")
-    .replace(/_+/g, "_");
-};
 
 // ==================== STYLES ====================
 const Container = styled.div`
@@ -623,6 +615,8 @@ const DOSSIER_STRUCTURE: DossierCategory[] = [
 // ==================== COMPOSANT ====================
 const CollaborateurFiche: React.FC = () => {
   const { user, profile } = useAuth();
+  const { notify } = useNotification();
+  const confirm = useConfirm();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { can, role } = usePermission();
@@ -673,26 +667,24 @@ const CollaborateurFiche: React.FC = () => {
         return;
       }
 
-      const { data: collab, error } = await supabase
-        .from("collaborateurs")
-        .select("*")
-        .eq("id", id)
-        .single();
-      if (error) throw error;
+      const collab = await dbApi.get<Collaborateur>("collaborateurs", id!);
       setCollaborateur(collab);
 
-      const { data: s } = await supabase
-        .from("scores")
-        .select("*")
-        .eq("collaborateur_id", id)
-        .order("mois", { ascending: false })
-        .limit(1);
+      const s = await dbApi.list<Score>("scores", {
+        filters: { collaborateur_id: id! },
+        orderBy: "mois",
+        orderAsc: false,
+        limit: 1,
+      });
       if (s && s.length > 0) setScores(s);
 
-      const { data: dossierData } = await supabase
-        .from("dossier_collaborateur")
-        .select("item_key, checked, document_url")
-        .eq("collaborateur_id", id);
+      const dossierData = await dbApi.list<DossierItem>(
+        "dossier_collaborateur",
+        {
+          filters: { collaborateur_id: id! },
+          limit: 500,
+        },
+      );
 
       const dossierMap: Record<string, DossierItem> = {};
       (dossierData || []).forEach((item: any) => {
@@ -705,7 +697,7 @@ const CollaborateurFiche: React.FC = () => {
       setDossier(dossierMap);
     } catch (err) {
       console.error(err);
-      alert("Erreur chargement du collaborateur");
+      notify.error("Erreur chargement du collaborateur");
     } finally {
       setLoading(false);
     }
@@ -722,28 +714,22 @@ const CollaborateurFiche: React.FC = () => {
 
   const handleUpload = async (field: "photo_url", file: File) => {
     try {
-      const fileExt = file.name.split(".").pop();
-      const baseName = file.name.substring(0, file.name.lastIndexOf("."));
-      const cleanName = sanitizeFilename(baseName);
-      const fileName = `${Date.now()}_${field}_${cleanName}.${fileExt}`;
-      const filePath = `collaborateurs/${fileName}`;
+      const uploaded = await fileApi.upload(file, {
+        bucket: "documents",
+        folder: "collaborateurs",
+      });
 
-      const { error: uploadError } = await supabase.storage
-        .from("documents")
-        .upload(filePath, file);
-      if (uploadError) throw uploadError;
-
-      handleChange(field, filePath);
+      handleChange(field, uploaded.storage_path);
     } catch (err: any) {
       console.error(err);
-      alert(`Erreur upload : ${err.message || "Erreur inconnue"}`);
+      notify.error(`Erreur upload : ${err.message || "Erreur inconnue"}`);
     }
   };
 
   // ============ DOSSIER HANDLERS ============
   const toggleDossierItem = async (itemKey: string) => {
     if (isNew) {
-      alert(
+      notify.error(
         "Veuillez d'abord enregistrer le collaborateur avant de gérer son dossier.",
       );
       return;
@@ -758,20 +744,16 @@ const CollaborateurFiche: React.FC = () => {
     });
 
     try {
-      const { error } = await supabase.from("dossier_collaborateur").upsert(
-        {
-          collaborateur_id: id,
-          item_key: itemKey,
-          checked: newChecked,
-          document_url: current.document_url || null,
-        },
-        { onConflict: "collaborateur_id,item_key" },
-      );
-      if (error) throw error;
+      await dbApi.upsert("dossier_collaborateur", {
+        collaborateur_id: id,
+        item_key: itemKey,
+        checked: newChecked,
+        document_url: current.document_url || null,
+      });
     } catch (err: any) {
       console.error("Détails complets :", err);
       setDossier({ ...dossier, [itemKey]: current });
-      alert(
+      notify.error(
         `Erreur dossier :\n${err.message || "Inconnu"}\n${err.details || ""}`,
       );
     }
@@ -779,49 +761,36 @@ const CollaborateurFiche: React.FC = () => {
 
   const handleDossierUpload = async (itemKey: string, file: File) => {
     if (isNew) {
-      alert("Veuillez d'abord enregistrer le collaborateur.");
+      notify.error("Veuillez d'abord enregistrer le collaborateur.");
       return;
     }
 
     try {
-      const fileExt = file.name.split(".").pop();
-      const baseName = file.name.substring(0, file.name.lastIndexOf("."));
-      const cleanName = sanitizeFilename(baseName);
-      const fileName = `${id}_${itemKey}_${Date.now()}_${cleanName}.${fileExt}`;
-      const filePath = `dossiers/${fileName}`;
+      const uploaded = await fileApi.upload(file, {
+        bucket: "documents",
+        folder: "dossiers",
+      });
 
-      const { error: uploadError } = await supabase.storage
-        .from("documents")
-        .upload(filePath, file);
-      if (uploadError) throw uploadError;
-
-      const { error: dbError } = await supabase
-        .from("dossier_collaborateur")
-        .upsert(
-          {
-            collaborateur_id: id,
-            item_key: itemKey,
-            checked: true,
-            document_url: filePath,
-          },
-          { onConflict: "collaborateur_id,item_key" },
-        );
-
-      if (dbError) throw dbError;
+      await dbApi.upsert("dossier_collaborateur", {
+        collaborateur_id: id,
+        item_key: itemKey,
+        checked: true,
+        document_url: uploaded.storage_path,
+      });
 
       setDossier({
         ...dossier,
         [itemKey]: {
           item_key: itemKey,
           checked: true,
-          document_url: filePath,
+          document_url: uploaded.storage_path,
         },
       });
 
-      alert("Document uploadé avec succès !");
+      notify.success("Document uploadé avec succès !");
     } catch (err: any) {
       console.error("Détails de l'erreur :", err);
-      alert(
+      notify.error(
         `Erreur d'upload : ${err.message || err.details || "Erreur inconnue"}`,
       );
     }
@@ -829,84 +798,79 @@ const CollaborateurFiche: React.FC = () => {
 
   const handleDossierReplace = async (itemKey: string, file: File) => {
     if (isNew) {
-      alert("Veuillez d'abord enregistrer le collaborateur.");
+      notify.error("Veuillez d'abord enregistrer le collaborateur.");
       return;
     }
 
-    if (!window.confirm("Remplacer le document existant par le nouveau ?")) {
-      return;
-    }
+    const replaced = await confirm({
+      title: "Remplacer le document ?",
+      message: "Remplacer le document existant par le nouveau ?",
+      variant: "primary",
+      confirmLabel: "Remplacer",
+      cancelLabel: "Annuler",
+    });
+    if (!replaced) return;
 
     try {
-      const fileExt = file.name.split(".").pop();
-      const baseName = file.name.substring(0, file.name.lastIndexOf("."));
-      const cleanName = sanitizeFilename(baseName);
-      const fileName = `${id}_${itemKey}_${Date.now()}_${cleanName}.${fileExt}`;
-      const filePath = `dossiers/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("documents")
-        .upload(filePath, file);
-      if (uploadError) throw uploadError;
+      const uploaded = await fileApi.upload(file, {
+        bucket: "documents",
+        folder: "dossiers",
+      });
 
       const oldPath = dossier[itemKey]?.document_url;
       if (oldPath) {
         try {
-          const cleanOldPath = oldPath.includes("/object/")
-            ? oldPath.split("/object/").pop()!.split("/").slice(1).join("/")
-            : oldPath;
-          await supabase.storage.from("documents").remove([cleanOldPath]);
+          // Aucun identifiant de fichier disponible pour l'ancien document
+          // (seul le chemin de stockage est conservé) -> suppression ignorée.
+          console.warn(
+            "Impossible de supprimer l'ancien fichier: identifiant indisponible",
+          );
         } catch (delErr) {
           console.warn("Impossible de supprimer l'ancien fichier:", delErr);
         }
       }
 
-      const { error: dbError } = await supabase
-        .from("dossier_collaborateur")
-        .upsert(
-          {
-            collaborateur_id: id,
-            item_key: itemKey,
-            checked: true,
-            document_url: filePath,
-          },
-          { onConflict: "collaborateur_id,item_key" },
-        );
-      if (dbError) throw dbError;
+      await dbApi.upsert("dossier_collaborateur", {
+        collaborateur_id: id,
+        item_key: itemKey,
+        checked: true,
+        document_url: uploaded.storage_path,
+      });
 
       setDossier({
         ...dossier,
         [itemKey]: {
           item_key: itemKey,
           checked: true,
-          document_url: filePath,
+          document_url: uploaded.storage_path,
         },
       });
 
-      alert("Document remplacé avec succès !");
+      notify.success("Document remplacé avec succès !");
     } catch (err: any) {
       console.error("Détails de l'erreur :", err);
-      alert(
+      notify.error(
         `Erreur de remplacement : ${err.message || err.details || "Erreur inconnue"}`,
       );
     }
   };
 
   const deleteDossierDocument = async (itemKey: string) => {
-    if (
-      !window.confirm("Supprimer ce document ? Cette action est irréversible.")
-    )
-      return;
+    const deleted = await confirm({
+      title: "Supprimer ce document ?",
+      message: "Cette action est irréversible.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!deleted) return;
     try {
-      await supabase.from("dossier_collaborateur").upsert(
-        {
-          collaborateur_id: id,
-          item_key: itemKey,
-          checked: false,
-          document_url: null,
-        },
-        { onConflict: "collaborateur_id,item_key" },
-      );
+      await dbApi.upsert("dossier_collaborateur", {
+        collaborateur_id: id,
+        item_key: itemKey,
+        checked: false,
+        document_url: null,
+      });
 
       setDossier({
         ...dossier,
@@ -914,7 +878,7 @@ const CollaborateurFiche: React.FC = () => {
       });
     } catch (err) {
       console.error(err);
-      alert("Erreur suppression");
+      notify.error("Erreur suppression");
     }
   };
 
@@ -930,36 +894,30 @@ const CollaborateurFiche: React.FC = () => {
 
     if (reason === null) return;
 
-    if (
-      !window.confirm(
-        `Archiver "${collaborateur.prenom} ${collaborateur.nom}" ?\n\n` +
-          `Le collaborateur disparaîtra de la liste active, ` +
-          `mais toutes ses données seront conservées.`,
-      )
-    ) {
-      return;
-    }
+    const archived = await confirm({
+      title: "Archiver ce collaborateur ?",
+      message: `Archiver "${collaborateur.prenom} ${collaborateur.nom}" ?\n\nLe collaborateur disparaîtra de la liste active, mais toutes ses données seront conservées.`,
+      variant: "danger",
+      confirmLabel: "Archiver",
+      cancelLabel: "Annuler",
+    });
+    if (!archived) return;
 
     try {
       setSaving(true);
 
-      const { error } = await supabase
-        .from("collaborateurs")
-        .update({
-          archived: true,
-          archived_at: new Date().toISOString(),
-          archived_by: user?.id || null,
-          archive_reason: reason || null,
-        })
-        .eq("id", id);
+      await dbApi.update("collaborateurs", id!, {
+        archived: true,
+        archived_at: new Date().toISOString(),
+        archived_by: user?.id || null,
+        archive_reason: reason || null,
+      });
 
-      if (error) throw error;
-
-      alert("Collaborateur archivé avec succès.");
+      notify.success("Collaborateur archivé avec succès.");
       navigate("/collaborateurs");
     } catch (err: any) {
       console.error(err);
-      alert("Erreur lors de l'archivage : " + err.message);
+      notify.error("Erreur lors de l'archivage : " + err.message);
     } finally {
       setSaving(false);
     }
@@ -968,35 +926,30 @@ const CollaborateurFiche: React.FC = () => {
   const handleRestore = async () => {
     if (isNew) return;
 
-    if (
-      !window.confirm(
-        `Restaurer "${collaborateur.prenom} ${collaborateur.nom}" ?\n\n` +
-          `Le collaborateur réapparaîtra dans la liste active.`,
-      )
-    ) {
-      return;
-    }
+    const restored = await confirm({
+      title: "Restaurer ce collaborateur ?",
+      message: `Restaurer "${collaborateur.prenom} ${collaborateur.nom}" ?\n\nLe collaborateur réapparaîtra dans la liste active.`,
+      variant: "primary",
+      confirmLabel: "Restaurer",
+      cancelLabel: "Annuler",
+    });
+    if (!restored) return;
 
     try {
       setSaving(true);
 
-      const { error } = await supabase
-        .from("collaborateurs")
-        .update({
-          archived: false,
-          archived_at: null,
-          archived_by: null,
-          archive_reason: null,
-        })
-        .eq("id", id);
+      await dbApi.update("collaborateurs", id!, {
+        archived: false,
+        archived_at: null,
+        archived_by: null,
+        archive_reason: null,
+      });
 
-      if (error) throw error;
-
-      alert("Collaborateur restauré avec succès.");
+      notify.success("Collaborateur restauré avec succès.");
       loadData();
     } catch (err: any) {
       console.error(err);
-      alert("Erreur lors de la restauration : " + err.message);
+      notify.error("Erreur lors de la restauration : " + err.message);
     } finally {
       setSaving(false);
     }
@@ -1006,46 +959,42 @@ const CollaborateurFiche: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!collaborateur.nom || !collaborateur.prenom) {
-      alert("Veuillez renseigner au moins le nom et le prénom.");
+      notify.error("Veuillez renseigner au moins le nom et le prénom.");
       return;
     }
     if (!collaborateur.date_embauche) {
-      alert("Veuillez renseigner la date d'embauche.");
+      notify.error("Veuillez renseigner la date d'embauche.");
       return;
     }
 
     try {
       setSaving(true);
-      const dataToSave = { ...collaborateur };
+      const dataToSave = { ...collaborateur } as unknown as Record<
+        string,
+        unknown
+      >;
 
       if (isNew) {
-        const { data, error } = await supabase
-          .from("collaborateurs")
-          .insert([dataToSave])
-          .select()
-          .single();
-        if (error) throw error;
+        const data = await dbApi.create<Collaborateur>(
+          "collaborateurs",
+          dataToSave,
+        );
         navigate(`/collaborateurs/${data.id}`);
       } else {
-        const { error } = await supabase
-          .from("collaborateurs")
-          .update(dataToSave)
-          .eq("id", id);
-        if (error) throw error;
+        await dbApi.update("collaborateurs", id!, dataToSave);
       }
 
       if (user && dataToSave.date_embauche) {
-        await supabase
-          .from("profiles")
-          .update({ hire_date: dataToSave.date_embauche })
-          .eq("id", user.id);
+        await dbApi.update("profiles", user.id, {
+          hire_date: dataToSave.date_embauche,
+        });
       }
 
-      alert("Collaborateur sauvegardé !");
+      notify.success("Collaborateur sauvegardé !");
       loadData();
     } catch (err) {
       console.error(err);
-      alert("Erreur lors de la sauvegarde");
+      notify.error("Erreur lors de la sauvegarde");
     } finally {
       setSaving(false);
     }

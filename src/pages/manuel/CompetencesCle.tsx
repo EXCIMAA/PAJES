@@ -1,8 +1,12 @@
 // src/pages/manuel/CompetencesCle.tsx
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import * as XLSX from "xlsx";
+import {
+  useNotification,
+  useConfirm,
+} from "../../contexts/NotificationContext";
 
 // ==================== STYLES ====================
 const Container = styled.div`
@@ -366,6 +370,8 @@ const CompetencesCle: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const { notify } = useNotification();
+  const confirm = useConfirm();
 
   const generateCompetenceId = (category: string, item: string): string => {
     return `${category}_${item}`.replace(/[^a-zA-Z0-9_]/g, "_");
@@ -377,19 +383,15 @@ const CompetencesCle: React.FC = () => {
       try {
         setLoading(true);
         // Charger les collaborateurs
-        const { data: collabData, error: collabError } = await supabase
-          .from("collaborateurs_cabinet")
-          .select("*")
-          .order("nom");
-
-        if (collabError) throw collabError;
+        const collabData = await dbApi.list<any>("collaborateurs_cabinet", {
+          orderBy: "nom",
+          limit: 500,
+        });
 
         // Charger les évaluations
-        const { data: evalData, error: evalError } = await supabase
-          .from("competences_evaluations")
-          .select("*");
-
-        if (evalError) throw evalError;
+        const evalData = await dbApi.list<any>("competences_evaluations", {
+          limit: 500,
+        });
 
         setCollaborateurs(collabData || []);
 
@@ -420,16 +422,14 @@ const CompetencesCle: React.FC = () => {
     const newNiveau = "N1";
     try {
       setSaving(true);
-      const { data, error } = await supabase
-        .from("collaborateurs_cabinet")
-        .insert([{ nom: newNom, niveau_poste: newNiveau }])
-        .select()
-        .single();
-      if (error) throw error;
+      const data = await dbApi.create<any>("collaborateurs_cabinet", {
+        nom: newNom,
+        niveau_poste: newNiveau,
+      });
       setCollaborateurs([...collaborateurs, data]);
       setEvaluations({ ...evaluations, [data.id]: {} });
     } catch (err: any) {
-      alert("Erreur ajout collaborateur: " + err.message);
+      notify.error("Erreur ajout collaborateur: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -437,20 +437,30 @@ const CompetencesCle: React.FC = () => {
 
   // Supprimer un collaborateur
   const deleteCollaborateur = async (id: string) => {
-    if (!window.confirm("Supprimer ce collaborateur ?")) return;
+    const confirmed = await confirm({
+      title: "Supprimer ce collaborateur ?",
+      message: "Cette action est irréversible.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
       setSaving(true);
-      await supabase.from("collaborateurs_cabinet").delete().eq("id", id);
-      await supabase
-        .from("competences_evaluations")
-        .delete()
-        .eq("collaborateur_id", id);
+      await dbApi.remove("collaborateurs_cabinet", id);
+      const evalsToDelete = await dbApi.list<any>("competences_evaluations", {
+        filters: { collaborateur_id: id },
+        limit: 500,
+      });
+      for (const ev of evalsToDelete) {
+        await dbApi.remove("competences_evaluations", ev.id);
+      }
       setCollaborateurs(collaborateurs.filter((c) => c.id !== id));
       const newEvals = { ...evaluations };
       delete newEvals[id];
       setEvaluations(newEvals);
     } catch (err: any) {
-      alert("Erreur suppression: " + err.message);
+      notify.error("Erreur suppression: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -464,16 +474,12 @@ const CompetencesCle: React.FC = () => {
   ) => {
     try {
       setSaving(true);
-      const { error } = await supabase
-        .from("collaborateurs_cabinet")
-        .update({ [field]: value })
-        .eq("id", id);
-      if (error) throw error;
+      await dbApi.update("collaborateurs_cabinet", id, { [field]: value });
       setCollaborateurs(
         collaborateurs.map((c) => (c.id === id ? { ...c, [field]: value } : c)),
       );
     } catch (err: any) {
-      alert("Erreur mise à jour: " + err.message);
+      notify.error("Erreur mise à jour: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -494,17 +500,13 @@ const CompetencesCle: React.FC = () => {
       setEvaluations(newEvals);
 
       // En base
-      const { error } = await supabase.from("competences_evaluations").upsert(
-        {
-          collaborateur_id: collabId,
-          competence_id: competenceId,
-          niveau: value,
-        },
-        { onConflict: "collaborateur_id, competence_id" },
-      );
-      if (error) throw error;
+      await dbApi.upsert("competences_evaluations", {
+        collaborateur_id: collabId,
+        competence_id: competenceId,
+        niveau: value,
+      });
     } catch (err: any) {
-      alert("Erreur sauvegarde évaluation: " + err.message);
+      notify.error("Erreur sauvegarde évaluation: " + err.message);
       // Recharger les données pour annuler la modification locale
       // (simple pour l'exemple)
     } finally {

@@ -79,6 +79,7 @@ class RoleId(str, Enum):
     STAGIAIRES = "stagiaires"
     FORMATEUR_SENIOR = "formateur_senior"
     FORMATEUR_JUNIOR = "formateur_junior"
+    USER = "user"
 
 
 ALL_MODULES = [m.value for m in ModuleId]
@@ -86,6 +87,7 @@ ALL_ACTIONS = [a.value for a in ActionId]
 ALL_ROLES = [r.value for r in RoleId]
 
 SUPER_ADMIN_ROLE = RoleId.SUPER_ADMIN.value
+DEFAULT_SIGNUP_ROLE = RoleId.USER.value
 
 
 class ModulePermissions(TypedDict):
@@ -114,6 +116,10 @@ def _full_all() -> dict[str, ModulePermissions]:
 
 
 PERMISSION_MATRIX: PermissionMatrix = {
+    # Default role for every new registration. Intentionally grants nothing:
+    # an administrator must assign a real role before any module becomes
+    # reachable. Keep in sync with DEFAULT_SIGNUP_ROLE.
+    "user": {m: dict(NONE) for m in ALL_MODULES},
     "assistant_administratif": {
         "clients": FULL,
         "missions": NONE,

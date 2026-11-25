@@ -9,7 +9,7 @@ import {
 } from "../lib/permissions";
 
 /**
- * Extract role from profile, falling back to Supabase user_metadata.
+ * Extract role from profile, falling back to auth user_metadata.
  * This makes the hook work even if the profile row hasn't loaded yet.
  */
 function roleFromAuth(

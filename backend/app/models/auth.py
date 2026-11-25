@@ -34,7 +34,7 @@ class Profile(Base):
     email: Mapped[str] = mapped_column(Text, nullable=False)
     full_name: Mapped[str] = mapped_column(Text, nullable=False)
     role: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default=text("'auditor'")
+        Text, nullable=False, server_default=text("'user'")
     )
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     department: Mapped[str | None] = mapped_column(Text, nullable=True)

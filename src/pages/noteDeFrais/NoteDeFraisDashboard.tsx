@@ -1,7 +1,7 @@
 // src/pages/NoteDeFrais/NoteDeFraisDashboard.tsx
 import React, { useState, useEffect } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import { NoteDeFraisForm } from "./NoteDeFraisForm";
 import { NoteDeFraisList } from "./NoteDeFraisList";
 import { addNotification } from "../../lib/notifications";
@@ -90,10 +90,9 @@ export const NoteDeFraisDashboard: React.FC = () => {
   const loadStats = async () => {
     try {
       setLoadingStats(true);
-      const { data: reports, error } = await supabase
-        .from("expense_reports")
-        .select("status, total_ht");
-      if (error) throw error;
+      const reports = await dbApi.list<any>("expense_reports", {
+        limit: 1000,
+      });
 
       const by_status: Record<string, number> = {};
       let total_ht = 0;

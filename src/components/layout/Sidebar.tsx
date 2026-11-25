@@ -32,6 +32,7 @@ import { useTranslation } from "react-i18next";
 import { NotificationBadge } from "../ui/NotificationBadge";
 import { usePermission } from "../../hooks/usePermission";
 import type { ModuleId } from "../../lib/permissions";
+import { NAV_ITEM_MODULE } from "../../lib/permissions";
 
 const BI_MODULES: ModuleId[] = [
   "factures",
@@ -83,6 +84,15 @@ export function Sidebar({
   const { t } = useTranslation();
   const { can } = usePermission();
   const hasBIVisibility = BI_MODULES.some((module) => can(module, "view"));
+
+  const visibleNavItems = NAV_ITEMS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => {
+      const module = NAV_ITEM_MODULE[item.id];
+      if (!module) return true;
+      return can(module, "view");
+    }),
+  })).filter((section) => section.items.length > 0);
   const isCollapsed = collapsed && !mobileOpen;
 
   const sectionLabels: Record<string, string> = {
@@ -163,7 +173,7 @@ export function Sidebar({
         </div>
 
       <nav className="flex-1 py-5 px-3 overflow-y-auto" aria-label={t("navigation.principal")}>
-        {NAV_ITEMS.map((section, si) => (
+        {visibleNavItems.map((section, si) => (
           <div key={section.section} className={cn(si > 0 && "mt-6")}>
             {!isCollapsed && (
               <p className="px-3 mb-2 text-2xs font-medium text-app-tertiary uppercase tracking-widest">

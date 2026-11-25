@@ -204,6 +204,7 @@ export const LEAVE_TYPE_LABELS: Record<string, string> = {
 
 export const USER_ROLE_LABELS: Record<string, string> = {
   super_admin: 'Super Admin',
+  user: 'Utilisateur (accès restreint)',
   partner: 'Associé',
   manager: 'Manager',
   senior_auditor: 'Auditeur Senior',

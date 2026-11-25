@@ -90,7 +90,8 @@ export function AuthPage() {
       if (!lastName.trim()) return t("auth.errors.lastNameRequired");
       if (!password) return t("auth.errors.passwordRequired");
       if (password.length < 8) return t("auth.errors.signupPasswordMin");
-      if (password !== confirmPassword) return t("auth.errors.passwordMismatch");
+      if (password !== confirmPassword)
+        return t("auth.errors.passwordMismatch");
       if (!acceptTerms) return t("auth.errors.termsRequired");
     } else {
       if (!password) return t("auth.errors.passwordRequired");
@@ -158,11 +159,14 @@ export function AuthPage() {
       } else {
         setSuccess(
           t("auth.resetEmailSent") ||
-            "Si un compte existe pour cette adresse, un e-mail de réinitialisation a été envoyé. Vérifiez votre boîte de réception et vos spams."
+            "Si un compte existe pour cette adresse, un e-mail de réinitialisation a été envoyé. Vérifiez votre boîte de réception et vos spams.",
         );
       }
     } catch {
-      setError(t("auth.errors.generic") || "Une erreur est survenue. Veuillez réessayer.");
+      setError(
+        t("auth.errors.generic") ||
+          "Une erreur est survenue. Veuillez réessayer.",
+      );
     } finally {
       setLoading(false);
     }
@@ -366,7 +370,7 @@ export function AuthPage() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="pajes@gmail.com"
+                    placeholder="you@example.com"
                     className="auth-input"
                     autoComplete="email"
                   />
@@ -386,7 +390,9 @@ export function AuthPage() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="auth-input pr-10"
-                      autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                      autoComplete={
+                        mode === "signup" ? "new-password" : "current-password"
+                      }
                     />
                     <button
                       type="button"
@@ -401,7 +407,9 @@ export function AuthPage() {
                     </button>
                   </div>
                   {mode === "signup" && (
-                    <p className="mt-1 text-xs text-slate-500">{t("auth.passwordStrength")}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {t("auth.passwordStrength")}
+                    </p>
                   )}
                 </div>
 
@@ -564,9 +572,7 @@ export function AuthPage() {
         <footer className="mt-auto px-6 pb-4 text-right text-[10px] leading-relaxed text-slate-400/70 sm:text-xs">
           <p>
             Developed by:{" "}
-            <span className="font-semibold">
-              TCHEBE MBIAFEU TRESOR DUPLEX
-            </span>
+            <span className="font-semibold">TCHEBE MBIAFEU TRESOR DUPLEX</span>
           </p>
           <p className="italic">
             Software Engineer • IT Manager • Full-Stack Developer

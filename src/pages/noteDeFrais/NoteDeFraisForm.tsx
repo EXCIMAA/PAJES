@@ -1,8 +1,9 @@
 // src/pages/NoteDeFrais/NoteDeFraisForm.tsx
 import React, { useEffect, useState, useRef } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import { addNotification } from "../../lib/notifications";
+import { useNotification } from "../../contexts/NotificationContext";
 import { format } from "date-fns";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -257,30 +258,22 @@ export const NoteDeFraisForm: React.FC<Props> = ({
   const [clients, setClients] = useState<any[]>([]);
   const [loadingMissions, setLoadingMissions] = useState(true);
   const printRef = useRef<HTMLDivElement>(null);
+  const { notify } = useNotification();
 
   // Charger missions et clients
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoadingMissions(true);
-        const [missionsRes, clientsRes] = await Promise.all([
-          supabase
-            .from("weekly_missions")
-            .select("id, subject")
-            .order("subject"),
-          supabase.from("clients").select("id, name").order("name"),
+        const [missionsData, clientsData] = await Promise.all([
+          dbApi.list("weekly_missions", {
+            orderBy: "subject",
+            limit: 500,
+          }),
+          dbApi.list("clients", { orderBy: "name", limit: 500 }),
         ]);
-        if (missionsRes.error) {
-          console.error("Erreur chargement missions:", missionsRes.error);
-          setError("Impossible de charger les missions.");
-        } else {
-          setMissions(missionsRes.data || []);
-        }
-        if (clientsRes.error) {
-          console.error("Erreur chargement clients:", clientsRes.error);
-        } else {
-          setClients(clientsRes.data || []);
-        }
+        setMissions(missionsData || []);
+        setClients(clientsData || []);
       } catch (err) {
         console.error(err);
         setError("Erreur lors du chargement des données.");
@@ -297,15 +290,17 @@ export const NoteDeFraisForm: React.FC<Props> = ({
       const fetchReport = async () => {
         try {
           setLoading(true);
-          const { data: report, error } = await supabase
-            .from("expense_reports")
-            .select("*, lines:expense_lines(*)")
-            .eq("id", reportId)
-            .single();
-          if (error) throw error;
+          const report = await dbApi.get<ExpenseReport>(
+            "expense_reports",
+            reportId,
+          );
+          const reportLines = await dbApi.list<ExpenseLine>("expense_lines", {
+            filters: { expense_report_id: reportId },
+            limit: 500,
+          });
           setHeader(report);
-          if (report.lines) {
-            setLines(report.lines);
+          if (reportLines) {
+            setLines(reportLines);
           }
         } catch (err: any) {
           setError(err.message);
@@ -372,11 +367,11 @@ export const NoteDeFraisForm: React.FC<Props> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!header.collaborateur_name) {
-      alert("Veuillez renseigner le nom du collaborateur.");
+      notify.error("Veuillez renseigner le nom du collaborateur.");
       return;
     }
     if (lines.length === 0 || lines.some((l) => !l.designation)) {
-      alert(
+      notify.error(
         "Veuillez remplir toutes les lignes de frais (désignation obligatoire).",
       );
       return;
@@ -451,39 +446,36 @@ export const NoteDeFraisForm: React.FC<Props> = ({
       let savedReportId = reportId;
 
       if (reportId) {
-        const { error } = await supabase
-          .from("expense_reports")
-          .update(headerData)
-          .eq("id", reportId);
-        if (error) throw error;
-        await supabase
-          .from("expense_lines")
-          .delete()
-          .eq("expense_report_id", reportId);
+        await dbApi.update("expense_reports", reportId, headerData);
+        const existingLines = await dbApi.list<ExpenseLine>("expense_lines", {
+          filters: { expense_report_id: reportId },
+          limit: 500,
+        });
+        for (const line of existingLines || []) {
+          if (line.id) {
+            await dbApi.remove("expense_lines", line.id);
+          }
+        }
       } else {
-        const { data, error } = await supabase
-          .from("expense_reports")
-          .insert([headerData])
-          .select()
-          .single();
-        if (error) throw error;
+        const data = await dbApi.create<{ id: string }>(
+          "expense_reports",
+          headerData,
+        );
         savedReportId = data.id;
       }
 
       if (savedReportId) {
-        const linesToInsert = lines.map((l) => ({
-          expense_report_id: savedReportId,
-          date: l.date || null,
-          designation: l.designation,
-          quantite: l.quantite,
-          devise: l.devise,
-          montant_ht: l.montant_ht,
-          tva: l.tva || 0,
-        }));
-        const { error } = await supabase
-          .from("expense_lines")
-          .insert(linesToInsert);
-        if (error) throw error;
+        for (const l of lines) {
+          await dbApi.create("expense_lines", {
+            expense_report_id: savedReportId,
+            date: l.date || null,
+            designation: l.designation,
+            quantite: l.quantite,
+            devise: l.devise,
+            montant_ht: l.montant_ht,
+            tva: l.tva || 0,
+          });
+        }
       }
 
       void addNotification({
@@ -495,7 +487,7 @@ export const NoteDeFraisForm: React.FC<Props> = ({
       });
       onSuccess();
     } catch (err: any) {
-      alert("Erreur : " + err.message);
+      notify.error("Erreur : " + err.message);
     } finally {
       setLoading(false);
     }
@@ -518,7 +510,7 @@ export const NoteDeFraisForm: React.FC<Props> = ({
       pdf.save(`NoteFrais_${header.reference || "export"}.pdf`);
     } catch (err) {
       console.error("Erreur export PDF:", err);
-      alert("Erreur lors de la génération du PDF.");
+      notify.error("Erreur lors de la génération du PDF.");
     }
   };
 

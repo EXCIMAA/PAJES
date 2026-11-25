@@ -1,8 +1,9 @@
 // src/pages/manuel/QuestionnaireEcouteClientInteractif.tsx
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import * as XLSX from "xlsx";
+import { useNotification } from "../../contexts/NotificationContext";
 
 // ==================== STYLES ====================
 const Container = styled.div`
@@ -323,6 +324,7 @@ const QuestionnaireEcouteClientInteractif: React.FC = () => {
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const { notify } = useNotification();
 
   // État du formulaire
   const [form, setForm] = useState<Reponse>({
@@ -369,11 +371,10 @@ const QuestionnaireEcouteClientInteractif: React.FC = () => {
     const fetchClients = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase
-          .from("clients")
-          .select("id, client_code, name")
-          .order("name");
-        if (error) throw error;
+        const data = await dbApi.list<Client>("clients", {
+          orderBy: "name",
+          limit: 500,
+        });
         setClients(data || []);
         if (data && data.length > 0) {
           setSelectedClientId(data[0].id);
@@ -391,17 +392,17 @@ const QuestionnaireEcouteClientInteractif: React.FC = () => {
 
   const loadReponse = async (clientId: string) => {
     try {
-      const { data, error } = await supabase
-        .from("questionnaire_ecoute_reponses")
-        .select("*")
-        .eq("client_id", clientId)
-        .maybeSingle();
-      if (error) throw error;
+      const data = (
+        await dbApi.list("questionnaire_ecoute_reponses", {
+          filters: { client_id: clientId },
+          limit: 500,
+        })
+      )[0] || null;
       if (data) {
         // Convertir les champs array si nécessaire
-        const moyen_info = data.moyen_info || [];
-        const sujets_interet = data.sujets_interet || [];
-        setForm({ ...data, moyen_info, sujets_interet });
+        const moyen_info = (data as any).moyen_info || [];
+        const sujets_interet = (data as any).sujets_interet || [];
+        setForm({ ...(data as any), moyen_info, sujets_interet });
         // Remplir les champs affichés
       } else {
         // Réinitialiser avec le client sélectionné
@@ -479,7 +480,7 @@ const QuestionnaireEcouteClientInteractif: React.FC = () => {
 
   const saveReponse = async () => {
     if (!selectedClientId) {
-      alert("Veuillez sélectionner un client.");
+      notify.error("Veuillez sélectionner un client.");
       return;
     }
     setSaving(true);
@@ -488,25 +489,21 @@ const QuestionnaireEcouteClientInteractif: React.FC = () => {
     try {
       const payload = { ...form, client_id: selectedClientId };
       // Vérifier si une réponse existe déjà
-      const { data: existing } = await supabase
-        .from("questionnaire_ecoute_reponses")
-        .select("id")
-        .eq("client_id", selectedClientId)
-        .maybeSingle();
-      let error;
+      const existing = (
+        await dbApi.list("questionnaire_ecoute_reponses", {
+          filters: { client_id: selectedClientId },
+          limit: 500,
+        })
+      )[0] || null;
       if (existing) {
-        const result = await supabase
-          .from("questionnaire_ecoute_reponses")
-          .update(payload)
-          .eq("id", existing.id);
-        error = result.error;
+        await dbApi.update(
+          "questionnaire_ecoute_reponses",
+          (existing as any).id,
+          payload as any,
+        );
       } else {
-        const result = await supabase
-          .from("questionnaire_ecoute_reponses")
-          .insert([payload]);
-        error = result.error;
+        await dbApi.create("questionnaire_ecoute_reponses", payload as any);
       }
-      if (error) throw error;
       setSuccess("Réponses sauvegardées !");
     } catch (err: any) {
       console.error(err);
@@ -518,7 +515,7 @@ const QuestionnaireEcouteClientInteractif: React.FC = () => {
 
   const exportExcel = () => {
     if (!selectedClientId) {
-      alert("Sélectionnez un client.");
+      notify.error("Sélectionnez un client.");
       return;
     }
     const client = clients.find((c) => c.id === selectedClientId);

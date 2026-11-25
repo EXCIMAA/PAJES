@@ -202,7 +202,7 @@ export function ActivateAccountPage() {
                       setFieldErrors((prev) => ({ ...prev, password: undefined }));
                     }
                   }}
-                  disabled={!token || loading}
+                  disabled={loading}
                   autoComplete="current-password"
                   placeholder="••••••••"
                   className={cn(
@@ -255,7 +255,7 @@ export function ActivateAccountPage() {
                       }));
                     }
                   }}
-                  disabled={!token || loading}
+                  disabled={loading}
                   autoComplete="new-password"
                   placeholder="••••••••"
                   className={cn(
@@ -295,7 +295,8 @@ export function ActivateAccountPage() {
             {/* Submit button */}
             <button
               type="submit"
-              disabled={!token || loading}
+              data-public-action="true"
+              disabled={loading}
               className="w-full flex items-center justify-center gap-2 rounded-xl bg-royal-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-royal-700 active:bg-royal-800 disabled:opacity-50 transition-colors"
             >
               {loading ? (

@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 import { addNotification } from "../../lib/notifications";
 import { suppliersApi, type Supplier } from "../../api/suppliers";
+import { useNotification, useConfirm } from "../../contexts/NotificationContext";
 import { format, differenceInDays } from "date-fns";
 import {
   Truck,
@@ -310,6 +311,9 @@ export const FournisseursPage: React.FC = () => {
     total_depenses: "",
   });
 
+  const { notify } = useNotification();
+  const confirm = useConfirm();
+
   // Charger les données
   const loadFournisseurs = async () => {
     try {
@@ -461,7 +465,7 @@ export const FournisseursPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name) {
-      alert("Veuillez saisir le nom du fournisseur.");
+      notify.error("Veuillez saisir le nom du fournisseur.");
       return;
     }
 
@@ -471,12 +475,12 @@ export const FournisseursPage: React.FC = () => {
         parseInt(form.recurring_day) < 1 ||
         parseInt(form.recurring_day) > 31
       ) {
-        alert("Veuillez saisir un jour du mois valide (1-31).");
+        notify.error("Veuillez saisir un jour du mois valide (1-31).");
         return;
       }
     } else {
       if (!form.alert_date) {
-        alert("Veuillez saisir une date d'alerte.");
+        notify.error("Veuillez saisir une date d'alerte.");
         return;
       }
     }
@@ -509,12 +513,21 @@ export const FournisseursPage: React.FC = () => {
       handleCloseModal();
       await loadFournisseurs();
     } catch (err) {
-      alert("Erreur : " + (err instanceof Error ? err.message : "Erreur inconnue"));
+      notify.error(
+        "Erreur : " + (err instanceof Error ? err.message : "Erreur inconnue"),
+      );
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Supprimer ce fournisseur ?")) return;
+    const confirmed = await confirm({
+      title: "Supprimer ce fournisseur ?",
+      message: "Cette action est irréversible.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
       await suppliersApi.delete(id);
       await loadFournisseurs();
@@ -524,7 +537,9 @@ export const FournisseursPage: React.FC = () => {
         type: "warning",
       });
     } catch (err) {
-      alert("Erreur : " + (err instanceof Error ? err.message : "Erreur inconnue"));
+      notify.error(
+        "Erreur : " + (err instanceof Error ? err.message : "Erreur inconnue"),
+      );
     }
   };
 
@@ -538,7 +553,9 @@ export const FournisseursPage: React.FC = () => {
         type: "success",
       });
     } catch (err) {
-      alert("Erreur : " + (err instanceof Error ? err.message : "Erreur inconnue"));
+      notify.error(
+        "Erreur : " + (err instanceof Error ? err.message : "Erreur inconnue"),
+      );
     }
   };
 

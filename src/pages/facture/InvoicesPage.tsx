@@ -14,6 +14,7 @@ import {
 import { invoicesApi, type InvoiceRecord } from "../../api/invoices";
 import { useAuth } from "../../contexts/AuthContext";
 import { useCountry } from "../../contexts/CountryContext";
+import { useNotification, useConfirm } from "../../contexts/NotificationContext";
 import { INVOICE_STATUS_CONFIG } from "../../lib/constants";
 import { cn, formatDate } from "../../lib/utils";
 import { ProtectedAction } from "../../components/auth/ProtectedAction"; // ✅ ADDED
@@ -57,6 +58,8 @@ function StatusBadge({ status }: { status: string }) {
 export default function InvoicesPage() {
   const { user, profile } = useAuth();
   const { selectedCountry } = useCountry();
+  const { notify } = useNotification();
+  const confirm = useConfirm();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -128,18 +131,20 @@ export default function InvoicesPage() {
   }, [invoices, search]);
 
   const handleDelete = async (id: string) => {
-    if (
-      !confirm(
-        "Archiver cette facture ? Elle ne sera plus visible dans la liste.",
-      )
-    )
-      return;
+    const confirmed = await confirm({
+      title: "Archiver cette facture ?",
+      message: "Elle ne sera plus visible dans la liste.",
+      variant: "warning",
+      confirmLabel: "Archiver",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
 
     try {
       await invoicesApi.archive(id);
       await load();
     } catch (deleteError) {
-      alert(
+      notify.error(
         "Erreur lors de l'archivage : " +
           (deleteError instanceof Error ? deleteError.message : "Erreur inconnue"),
       );

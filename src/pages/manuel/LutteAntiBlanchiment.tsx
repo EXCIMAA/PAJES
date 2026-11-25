@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import * as XLSX from "xlsx";
+import { useNotification } from "../../contexts/NotificationContext";
 
 // ==================== STYLED COMPONENTS ====================
 
@@ -315,16 +316,16 @@ const LutteAntiBlanchiment: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const { notify } = useNotification();
 
   useEffect(() => {
     const fetchClients = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase
-          .from("clients")
-          .select("id, client_code, name, status, niveau_risque")
-          .order("name");
-        if (error) throw error;
+        const data = await dbApi.list<Client>("clients", {
+          orderBy: "name",
+          limit: 500,
+        });
         setClients(data || []);
         if (data && data.length > 0) setSelectedClientId(data[0].id);
       } catch (err: any) {
@@ -342,19 +343,17 @@ const LutteAntiBlanchiment: React.FC = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const { data: clientInfo } = await supabase
-          .from("clients")
-          .select("id, client_code, name, status, niveau_risque")
-          .eq("id", selectedClientId)
-          .single();
-        setClientData(clientInfo);
+        const clientRows = await dbApi.list<Client>("clients", {
+          filters: { id: selectedClientId },
+          limit: 1,
+        });
+        setClientData(clientRows?.[0] ?? null);
 
-        const { data: labData, error } = await supabase
-          .from("lab_questionnaire")
-          .select("*")
-          .eq("client_id", selectedClientId)
-          .single();
-        if (error && error.code !== "PGRST116") throw error;
+        const labRows = await dbApi.list<LabData>("lab_questionnaire", {
+          filters: { client_id: selectedClientId },
+          limit: 1,
+        });
+        const labData = labRows?.[0];
         if (labData) {
           setFormData(labData);
         } else {
@@ -420,23 +419,26 @@ const LutteAntiBlanchiment: React.FC = () => {
     if (!formData || !selectedClientId) return;
     setSaving(true);
     try {
-      const { data: existing } = await supabase
-        .from("lab_questionnaire")
-        .select("id")
-        .eq("client_id", selectedClientId)
-        .single();
-      if (existing) {
-        await supabase
-          .from("lab_questionnaire")
-          .update(formData)
-          .eq("client_id", selectedClientId);
+      const existing = await dbApi.list<{ id: string }>("lab_questionnaire", {
+        filters: { client_id: selectedClientId },
+        limit: 1,
+      });
+      if (existing?.[0]) {
+        await dbApi.update(
+          "lab_questionnaire",
+          existing[0].id,
+          formData as unknown as Record<string, unknown>,
+        );
       } else {
-        await supabase.from("lab_questionnaire").insert([formData]);
+        await dbApi.create(
+          "lab_questionnaire",
+          formData as unknown as Record<string, unknown>,
+        );
       }
-      alert("Questionnaire LBC-FT sauvegardé !");
+      notify.success("Questionnaire LBC-FT sauvegardé !");
     } catch (err: any) {
       console.error(err);
-      alert("Erreur : " + err.message);
+      notify.error("Erreur : " + err.message);
     } finally {
       setSaving(false);
     }
@@ -446,12 +448,11 @@ const LutteAntiBlanchiment: React.FC = () => {
     if (!selectedClientId) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("lab_questionnaire")
-        .select("*")
-        .eq("client_id", selectedClientId)
-        .single();
-      if (error && error.code !== "PGRST116") throw error;
+      const rows = await dbApi.list<LabData>("lab_questionnaire", {
+        filters: { client_id: selectedClientId },
+        limit: 1,
+      });
+      const data = rows?.[0];
       if (data) {
         setFormData(data);
       } else {
@@ -499,7 +500,7 @@ const LutteAntiBlanchiment: React.FC = () => {
       }
     } catch (err: any) {
       console.error(err);
-      alert("Erreur annulation : " + err.message);
+      notify.error("Erreur annulation : " + err.message);
     } finally {
       setLoading(false);
     }

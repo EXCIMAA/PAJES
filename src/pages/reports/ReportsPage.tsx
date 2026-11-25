@@ -12,6 +12,7 @@ import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { useAuth } from "../../contexts/AuthContext";
 import { reportsApi, type ReportRow } from "../../api/reports";
+import { useNotification } from "../../contexts/NotificationContext";
 
 // ============================================================
 // TYPES
@@ -79,6 +80,7 @@ const formatDateTime = (dateStr: string) => {
 export default function ReportsPage() {
   const { t } = useTranslation();
   const { profile } = useAuth();
+  const { notify } = useNotification();
 
   const isSuperAdmin = profile?.role === "super_admin";
 
@@ -169,7 +171,7 @@ export default function ReportsPage() {
   // ---------- EXPORT STANDARD (CSV) ----------
   const handleExport = () => {
     if (data.length === 0) {
-      alert("Aucune donnée à exporter.");
+      notify.warning("Aucune donnée à exporter.");
       return;
     }
     const headers = Object.keys(data[0]);
@@ -192,7 +194,7 @@ export default function ReportsPage() {
   const handleGenerateCustomReport = async () => {
     const selectedModules = modules.filter((m) => m.checked).map((m) => m.id);
     if (selectedModules.length === 0) {
-      alert("Veuillez sélectionner au moins un module.");
+      notify.warning("Veuillez sélectionner au moins un module.");
       return;
     }
 
@@ -412,7 +414,7 @@ export default function ReportsPage() {
       );
     } catch (error) {
       console.error(error);
-      alert("Erreur lors de l'exportation.");
+      notify.error("Erreur lors de l'exportation.");
     }
   };
 

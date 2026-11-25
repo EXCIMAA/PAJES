@@ -1,5 +1,5 @@
 // src/pages/documentsTravail/DocumentsPage.tsx
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import {
   Upload,
   Trash2,
@@ -15,8 +15,8 @@ import { Badge } from "../../components/ui/Badge";
 import { DocumentLink } from "../../components/DocumentLink";
 import { cn, formatDate, formatNumber } from "../../lib/utils";
 import { addNotification } from "../../lib/notifications";
-import { useSupabaseQuery } from "../../hooks/useSupabaseData";
-import { supabase } from "../../lib/supabase";
+import { useNotification, useConfirm } from "../../contexts/NotificationContext";
+import { dbApi, fileApi } from "../../lib/apiClient";
 import { ProtectedAction } from "../../components/auth/ProtectedAction"; // ✅ ADDED
 
 interface WorkingDocument {
@@ -68,11 +68,25 @@ function getFileIcon(type: string) {
 const BUCKET_NAME = "working-documents";
 
 export function DocumentsPage() {
-  const { data: documents, refetch } = useSupabaseQuery<WorkingDocument>({
-    table: "working_documents",
-    orderBy: "created_at",
-    orderAsc: false,
-  });
+  const [documents, setDocuments] = useState<WorkingDocument[]>([]);
+
+  const refetch = async () => {
+    try {
+      const data = await dbApi.list<WorkingDocument>("working_documents", {
+        orderBy: "created_at",
+        orderAsc: false,
+        limit: 500,
+      });
+      setDocuments(data);
+    } catch (err: any) {
+      console.error("Erreur chargement documents :", err);
+      setDocuments([]);
+    }
+  };
+
+  useEffect(() => {
+    refetch();
+  }, []);
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -90,6 +104,9 @@ export function DocumentsPage() {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { notify } = useNotification();
+  const confirm = useConfirm();
 
   const filtered = useMemo(() => {
     let result = documents || [];
@@ -109,40 +126,35 @@ export function DocumentsPage() {
 
   const handleUpload = async () => {
     if (!file) {
-      alert("Veuillez sélectionner un fichier");
+      notify.error("Veuillez sélectionner un fichier");
       return;
     }
     if (!form.title.trim()) {
-      alert("Veuillez saisir un titre");
+      notify.error("Veuillez saisir un titre");
       return;
     }
 
     setUploading(true);
     try {
       const fileExt = file.name.split(".").pop();
-      const fileName = `${Date.now()}_${file.name}`;
-      const filePath = `documents/${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from(BUCKET_NAME)
-        .upload(filePath, file);
-      if (uploadError) throw uploadError;
+      const uploadResult = await fileApi.upload(file, {
+        bucket: BUCKET_NAME,
+        folder: "documents",
+      });
 
       const payload = {
         title: form.title.trim(),
         description: form.description?.trim() || null,
         category: form.category,
         file_name: file.name,
-        file_path: filePath,
+        file_path: uploadResult.storage_path,
         file_size: Math.round(file.size / 1024),
         file_type: fileExt || "unknown",
         client_id: form.client_id || null,
       };
 
-      const { error: insertError } = await supabase
-        .from("working_documents")
-        .insert([payload]);
-      if (insertError) throw insertError;
+      await dbApi.create("working_documents", payload);
 
       await refetch();
       void addNotification({
@@ -162,29 +174,26 @@ export function DocumentsPage() {
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err: any) {
       console.error("Erreur upload :", err);
-      alert("Erreur : " + (err.message || "Inconnue"));
+      notify.error("Erreur : " + (err.message || "Inconnue"));
     } finally {
       setUploading(false);
     }
   };
 
   const handleDelete = async (doc: WorkingDocument) => {
-    if (!confirm(`Supprimer définitivement "${doc.title}" ?`)) return;
+    const confirmed = await confirm({
+      title: "Supprimer définitivement ce document ?",
+      message: `Le document "${doc.title}" sera définitivement retiré.`,
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
       if (doc.file_path) {
-        const urlParts = doc.file_path.split("/");
-        const filePath = urlParts
-          .slice(urlParts.indexOf(BUCKET_NAME) + 1)
-          .join("/");
-        if (filePath) {
-          await supabase.storage.from(BUCKET_NAME).remove([filePath]);
-        }
+        await fileApi.remove(doc.id);
       }
-      const { error } = await supabase
-        .from("working_documents")
-        .delete()
-        .eq("id", doc.id);
-      if (error) throw error;
+      await dbApi.remove("working_documents", doc.id);
 
       await refetch();
       void addNotification({
@@ -194,7 +203,7 @@ export function DocumentsPage() {
       });
     } catch (err: any) {
       console.error("Erreur suppression :", err);
-      alert("Erreur : " + (err.message || "Inconnue"));
+      notify.error("Erreur : " + (err.message || "Inconnue"));
     }
   };
 

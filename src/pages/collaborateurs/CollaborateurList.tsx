@@ -3,11 +3,10 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import { format } from "date-fns";
 import { useAuth } from "../../contexts/AuthContext";
 import { ProtectedAction } from "../../components/auth/ProtectedAction";
-import { buildAccessFilter } from "../../lib/permissions";
 import { usePermission } from "../../hooks/usePermission";
 
 const Container = styled.div`
@@ -197,7 +196,7 @@ interface Collaborateur {
 
 export const CollaborateurList: React.FC = () => {
   const { t } = useTranslation();
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const { can, role } = usePermission();
 
@@ -215,28 +214,13 @@ export const CollaborateurList: React.FC = () => {
 
     try {
       setLoading(true);
-
-      const accessFilter = buildAccessFilter({
-        role: profile?.role,
-        module: "collaborateurs",
-        currentUserId: user.id,
-        ownerColumn: "id",
-        assignmentColumn: "manager_id",
+      const data = await dbApi.list<Collaborateur>("collaborateurs", {
+        orderBy: "nom",
+        limit: 500,
       });
-
-      let q = supabase
-        .from("collaborateurs")
-        .select(
-          "id, nom, prenom, photo_url, fonction, pays, date_embauche, archived",
-        )
-        .eq("archived", showArchived)
-        .order("nom");
-
-      if (accessFilter) q = q.or(accessFilter);
-
-      const { data, error } = await q;
-      if (error) throw error;
-      setCollaborateurs(data || []);
+      setCollaborateurs(
+        (data || []).filter((c) => (showArchived ? !!c.archived : !c.archived)),
+      );
     } catch (err) {
       console.error(err);
     } finally {
@@ -250,7 +234,7 @@ export const CollaborateurList: React.FC = () => {
     } else {
       setLoading(false);
     }
-  }, [user, profile?.role, canViewCollaborateurs, showArchived]);
+  }, [user, canViewCollaborateurs, showArchived]);
 
   if (loading) {
     return (
@@ -260,7 +244,6 @@ export const CollaborateurList: React.FC = () => {
     );
   }
 
-  // ✅ ÉCRAN "ACCÈS REFUSÉ" si l'utilisateur n'a pas la permission
   if (!canViewCollaborateurs) {
     return (
       <AccessDeniedContainer>

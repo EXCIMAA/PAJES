@@ -1,8 +1,9 @@
 // src/pages/manuel/TravauxPeriodiques.tsx
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import * as XLSX from "xlsx";
+import { useNotification } from "../../contexts/NotificationContext";
 
 // ==================== STYLES ====================
 const Container = styled.div`
@@ -433,19 +434,17 @@ const TravauxPeriodiques: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const { notify } = useNotification();
 
   // Charger la liste des clients
   useEffect(() => {
     const fetchClients = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase
-          .from("clients")
-          .select(
-            "id, client_code, name, status, niveau_risque, date_cloture, periodicite",
-          )
-          .order("name");
-        if (error) throw error;
+        const data = await dbApi.list<Client>("clients", {
+          orderBy: "name",
+          limit: 500,
+        });
         setClients(data || []);
         if (data && data.length > 0) setSelectedClientId(data[0].id);
       } catch (err: any) {
@@ -497,20 +496,17 @@ const TravauxPeriodiques: React.FC = () => {
     fetchStatuses(client.id, currentPeriod);
   }, [selectedClientId, clients, currentPeriod]);
 
-  // Charger les status depuis Supabase
+  // Charger les status depuis FastAPI
   const fetchStatuses = async (clientId: string, period: number) => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("periodic_task_statuses")
-        .select("task_id, status, observation")
-        .eq("client_id", clientId)
-        .eq("period_number", period);
-
-      if (error) throw error;
+      const data = await dbApi.list("periodic_task_statuses", {
+        filters: { client_id: clientId, period_number: String(period) },
+        limit: 500,
+      });
 
       const initialStatuses: TaskStatus[] = TASKS.map((task) => {
-        const existing = data?.find((d: any) => d.task_id === task.id);
+        const existing: any = data?.find((d: any) => d.task_id === task.id);
         return {
           task_id: task.id,
           status: existing?.status || "",
@@ -553,24 +549,26 @@ const TravauxPeriodiques: React.FC = () => {
         updated_at: new Date().toISOString(),
       }));
 
-      const { error: delError } = await supabase
-        .from("periodic_task_statuses")
-        .delete()
-        .eq("client_id", selectedClientId)
-        .eq("period_number", currentPeriod);
+      const existing = await dbApi.list("periodic_task_statuses", {
+        filters: {
+          client_id: selectedClientId,
+          period_number: String(currentPeriod),
+        },
+        limit: 500,
+      });
 
-      if (delError) throw delError;
+      for (const row of existing) {
+        await dbApi.remove("periodic_task_statuses", (row as any).id);
+      }
 
-      const { error: insError } = await supabase
-        .from("periodic_task_statuses")
-        .insert(updates);
+      for (const update of updates) {
+        await dbApi.create("periodic_task_statuses", update);
+      }
 
-      if (insError) throw insError;
-
-      alert("Période sauvegardée !");
+      notify.success("Période sauvegardée !");
     } catch (err: any) {
       console.error(err);
-      alert("Erreur : " + err.message);
+      notify.error("Erreur : " + err.message);
     } finally {
       setSaving(false);
     }
@@ -586,14 +584,11 @@ const TravauxPeriodiques: React.FC = () => {
   const exportExcel = async () => {
     if (!clientData) return;
     try {
-      const { data, error } = await supabase
-        .from("periodic_task_statuses")
-        .select("*")
-        .eq("client_id", clientData.id)
-        .order("period_number")
-        .order("task_id");
-
-      if (error) throw error;
+      const data = await dbApi.list("periodic_task_statuses", {
+        filters: { client_id: clientData.id },
+        orderBy: "period_number",
+        limit: 500,
+      });
 
       const wb = XLSX.utils.book_new();
 
@@ -631,7 +626,7 @@ const TravauxPeriodiques: React.FC = () => {
       URL.revokeObjectURL(link.href);
     } catch (err: any) {
       console.error(err);
-      alert("Erreur export : " + err.message);
+      notify.error("Erreur export : " + err.message);
     }
   };
 

@@ -17,13 +17,14 @@ import { PageHeader } from "../../components/ui/PageHeader";
 import { Badge } from "../../components/ui/Badge";
 import { DocumentLink } from "../../components/DocumentLink";
 import { cn, formatDate } from "../../lib/utils";
-import { supabase } from "../../lib/supabase";
+import { dbApi, fileApi } from "../../lib/apiClient";
 import { addNotification } from "../../lib/notifications";
+import { useNotification, useConfirm } from "../../contexts/NotificationContext";
 import { LEAVE_TYPE_LABELS } from "../../lib/constants";
 import { useAuth } from "../../contexts/AuthContext";
 import type { LeaveRequest } from "../../types";
 import { ProtectedAction } from "../../components/auth/ProtectedAction";
-import { buildAccessFilter } from "../../lib/permissions"; // ✅ IMPORT CRUCIAL
+import { buildAccessFilter } from "../../lib/permissions";
 
 const BUCKET_NAME = "leave_documents";
 
@@ -48,7 +49,8 @@ function monthsBetween(date1: Date, date2: Date): number {
 
 export function LeavePage() {
   const { user, profile } = useAuth();
-
+  const { notify } = useNotification();
+  const confirm = useConfirm();
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +83,7 @@ export function LeavePage() {
   const [showAddDaysModal, setShowAddDaysModal] = useState(false);
   const [extraDays, setExtraDays] = useState(0);
   const [addingDays, setAddingDays] = useState(false);
+
   const [hireDate, setHireDate] = useState<string | null>(null);
 
   const [showHireDateModal, setShowHireDateModal] = useState(false);
@@ -91,42 +94,30 @@ export function LeavePage() {
     setLoadingBalance(true);
     try {
       const year = new Date().getFullYear();
-      const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
-        .select("hire_date")
-        .eq("id", user.id)
-        .single();
-      if (profileError) throw profileError;
-      if (!profileData?.hire_date) {
+      const data = await dbApi.get<{ hire_date: string }>("profiles", user.id);
+      if (!data?.hire_date) {
         setBalance(null);
         setHireDate(null);
         setLoadingBalance(false);
         return;
       }
-      setHireDate(profileData.hire_date);
-      const hire = new Date(profileData.hire_date);
+      setHireDate(data.hire_date);
+      const hire = new Date(data.hire_date);
       const now = new Date();
       const monthsWorked = monthsBetween(hire, now);
       const totalEarned = monthsWorked * 2;
 
-      const { data: takenLeaves, error: takenError } = await supabase
-        .from("leave_requests")
-        .select("duration")
-        .eq("employee_id", user.id)
-        .eq("status", "approved")
-        .gte("start_date", `${year}-01-01`)
-        .lte("end_date", `${year}-12-31`);
-      if (takenError) throw takenError;
+      const takenLeaves = await dbApi.list<any>("leave_requests", {
+        filters: { employee_id: user.id, status: "approved" },
+        limit: 500,
+      });
       const taken = takenLeaves?.reduce((sum, l) => sum + l.duration, 0) || 0;
 
-      const { data: balData, error: balError } = await supabase
-        .from("leave_balances")
-        .select("extra_days")
-        .eq("employee_id", user.id)
-        .eq("year", year)
-        .maybeSingle();
-      if (balError) throw balError;
-      const extraDaysFromDb = balData?.extra_days || 0;
+      const balData = await dbApi.list<any>("leave_balances", {
+        filters: { employee_id: user.id, year: String(year) },
+        limit: 1,
+      });
+      const extraDaysFromDb = balData?.[0]?.extra_days || 0;
 
       const totalWithExtra = totalEarned + extraDaysFromDb;
       const remaining = totalWithExtra - taken;
@@ -140,10 +131,7 @@ export function LeavePage() {
         extra_days: extraDaysFromDb,
         updated_at: new Date().toISOString(),
       };
-      const { error: upsertError } = await supabase
-        .from("leave_balances")
-        .upsert(newBalance, { onConflict: "employee_id, year" });
-      if (upsertError) throw upsertError;
+      await dbApi.upsert("leave_balances", newBalance);
 
       setBalance({
         total_earned: totalWithExtra,
@@ -161,15 +149,11 @@ export function LeavePage() {
   const updateHireDate = async () => {
     if (!user) return;
     if (!newHireDate) {
-      alert("Veuillez sélectionner une date.");
+      notify.error("Veuillez sélectionner une date.");
       return;
     }
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ hire_date: newHireDate })
-        .eq("id", user.id);
-      if (error) throw error;
+      await dbApi.update("profiles", user.id, { hire_date: newHireDate });
       await fetchBalance();
       setShowHireDateModal(false);
       setNewHireDate("");
@@ -179,11 +163,10 @@ export function LeavePage() {
         type: "profile",
       });
     } catch (err: any) {
-      alert("Erreur : " + err.message);
+      notify.error("Erreur : " + err.message);
     }
   };
 
-  // ✅ FILTRE ROW-LEVEL APPLIQUÉ ICI
   const fetchLeaves = async () => {
     if (!user) {
       setLoading(false);
@@ -195,21 +178,19 @@ export function LeavePage() {
         role: profile?.role,
         module: "conges",
         currentUserId: user.id,
-        ownerColumn: "employee_id", // ← filtre sur la bonne colonne
+        ownerColumn: "employee_id",
       });
 
-      let q = supabase
-        .from("leave_requests")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      // ✅ APPLICATION DU FILTRE
+      const filterParams: any = {
+        orderBy: "created_at",
+        orderAsc: false,
+        limit: 500,
+      };
       if (accessFilter) {
-        q = q.or(accessFilter);
+        filterParams.filters = { _or: accessFilter };
       }
 
-      const { data: leavesData, error: leavesError } = await q;
-      if (leavesError) throw leavesError;
+      const leavesData = await dbApi.list<any>("leave_requests", filterParams);
 
       if (!leavesData || leavesData.length === 0) {
         setLeaves([]);
@@ -223,11 +204,10 @@ export function LeavePage() {
       ];
       let profilesMap: Record<string, string> = {};
       if (employeeIds.length > 0) {
-        const { data: profilesData, error: profilesError } = await supabase
-          .from("profiles")
-          .select("id, full_name")
-          .in("id", employeeIds);
-        if (profilesError) throw profilesError;
+        const profilesData = await dbApi.list<{ id: string; full_name: string }>(
+          "profiles",
+          { limit: 500 },
+        );
         profilesMap = profilesData.reduce(
           (acc, p) => ({ ...acc, [p.id]: p.full_name }),
           {},
@@ -259,7 +239,7 @@ export function LeavePage() {
       fetchLeaves();
       fetchBalance();
     }
-  }, [user, profile?.role]); // ✅ re-fetch quand le rôle change
+  }, [user, profile?.role]);
 
   const filtered = leaves.filter(
     (l) => statusFilter === "all" || l.status === statusFilter,
@@ -274,19 +254,19 @@ export function LeavePage() {
 
   const handleSubmit = async () => {
     if (!form.employee_id) {
-      alert("Vous devez être connecté pour demander un congé");
+      notify.error("Vous devez être connecté pour demander un congé");
       return;
     }
     if (!form.reason.trim()) {
-      alert("Veuillez saisir un motif");
+      notify.error("Veuillez saisir un motif");
       return;
     }
     if (!form.start_date || !form.end_date) {
-      alert("Veuillez sélectionner les dates de début et de fin");
+      notify.error("Veuillez sélectionner les dates de début et de fin");
       return;
     }
     if (new Date(form.start_date) > new Date(form.end_date)) {
-      alert("La date de début doit être antérieure ou égale à la date de fin");
+      notify.error("La date de début doit être antérieure ou égale à la date de fin");
       return;
     }
 
@@ -295,7 +275,7 @@ export function LeavePage() {
     const duration = countWeekdaysExcludingSunday(start, end);
 
     if (balance && duration > balance.remaining) {
-      alert(`Solde insuffisant. Vous disposez de ${balance.remaining} jours.`);
+      notify.error(`Solde insuffisant. Vous disposez de ${balance.remaining} jours.`);
       return;
     }
 
@@ -306,13 +286,11 @@ export function LeavePage() {
       let supportingDocumentPath: string | null = null;
 
       if (file) {
-        const fileName = `${Date.now()}_${file.name}`;
-        const filePath = `leave_documents/${fileName}`;
-        const { error: uploadError } = await supabase.storage
-          .from(BUCKET_NAME)
-          .upload(filePath, file);
-        if (uploadError) throw uploadError;
-        supportingDocumentPath = filePath;
+        const uploadResult = await fileApi.upload(file, {
+          bucket: BUCKET_NAME,
+          folder: "leave_documents",
+        });
+        supportingDocumentPath = uploadResult.storage_path;
       }
 
       const payload = {
@@ -326,8 +304,7 @@ export function LeavePage() {
         supporting_document: supportingDocumentPath,
       };
 
-      const { error } = await supabase.from("leave_requests").insert([payload]);
-      if (error) throw error;
+      await dbApi.create("leave_requests", payload);
 
       await fetchLeaves();
       await fetchBalance();
@@ -348,7 +325,7 @@ export function LeavePage() {
         type: "leave",
       });
     } catch (err: any) {
-      alert("Erreur lors de la soumission : " + err.message);
+      notify.error("Erreur lors de la soumission : " + err.message);
     } finally {
       setSubmitting(false);
       setUploading(false);
@@ -356,13 +333,16 @@ export function LeavePage() {
   };
 
   const handleApprove = async (id: string) => {
-    if (!confirm("Approuver cette demande ?")) return;
+    const confirmed = await confirm({
+      title: "Approuver cette demande ?",
+      message: "Cette demande de congé sera approuvée.",
+      variant: "primary",
+      confirmLabel: "Approuver",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
-      const { error } = await supabase
-        .from("leave_requests")
-        .update({ status: "approved" })
-        .eq("id", id);
-      if (error) throw error;
+      await dbApi.update("leave_requests", id, { status: "approved" });
       await fetchBalance();
       await fetchLeaves();
       void addNotification({
@@ -371,18 +351,21 @@ export function LeavePage() {
         type: "leave",
       });
     } catch (err: any) {
-      alert("Erreur : " + err.message);
+      notify.error("Erreur : " + err.message);
     }
   };
 
   const handleReject = async (id: string) => {
-    if (!confirm("Rejeter cette demande ?")) return;
+    const confirmed = await confirm({
+      title: "Rejeter cette demande ?",
+      message: "Cette demande de congé sera rejetée.",
+      variant: "danger",
+      confirmLabel: "Rejeter",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
-      const { error } = await supabase
-        .from("leave_requests")
-        .update({ status: "rejected" })
-        .eq("id", id);
-      if (error) throw error;
+      await dbApi.update("leave_requests", id, { status: "rejected" });
       await fetchLeaves();
       void addNotification({
         title: "Demande de congé rejetée",
@@ -390,7 +373,7 @@ export function LeavePage() {
         type: "leave",
       });
     } catch (err: any) {
-      alert("Erreur : " + err.message);
+      notify.error("Erreur : " + err.message);
     }
   };
 
@@ -411,19 +394,19 @@ export function LeavePage() {
   const handleUpdate = async () => {
     if (!editingId) return;
     if (!form.employee_id) {
-      alert("Vous devez être connecté pour modifier une demande");
+      notify.error("Vous devez être connecté pour modifier une demande");
       return;
     }
     if (!form.reason.trim()) {
-      alert("Veuillez saisir un motif");
+      notify.error("Veuillez saisir un motif");
       return;
     }
     if (!form.start_date || !form.end_date) {
-      alert("Veuillez sélectionner les dates de début et de fin");
+      notify.error("Veuillez sélectionner les dates de début et de fin");
       return;
     }
     if (new Date(form.start_date) > new Date(form.end_date)) {
-      alert("La date de début doit être antérieure ou égale à la date de fin");
+      notify.error("La date de début doit être antérieure ou égale à la date de fin");
       return;
     }
 
@@ -439,31 +422,26 @@ export function LeavePage() {
       let supportingDocumentPath: string | null = null;
 
       if (editingFile) {
-        const fileName = `${Date.now()}_${editingFile.name}`;
-        const filePath = `leave_documents/${fileName}`;
-        const { error: uploadError } = await supabase.storage
-          .from(BUCKET_NAME)
-          .upload(filePath, editingFile);
-        if (uploadError) throw uploadError;
-        supportingDocumentPath = filePath;
+        const uploadResult = await fileApi.upload(editingFile, {
+          bucket: BUCKET_NAME,
+          folder: "leave_documents",
+        });
+        supportingDocumentPath = uploadResult.storage_path;
       }
 
-      const payload = {
+      const payload: any = {
         leave_type: form.leave_type,
         reason: form.reason.trim(),
         start_date: form.start_date,
         end_date: form.end_date,
         duration: duration,
-        ...(supportingDocumentPath && {
-          supporting_document: supportingDocumentPath,
-        }),
       };
 
-      const { error } = await supabase
-        .from("leave_requests")
-        .update(payload)
-        .eq("id", editingId);
-      if (error) throw error;
+      if (supportingDocumentPath) {
+        payload.supporting_document = supportingDocumentPath;
+      }
+
+      await dbApi.update("leave_requests", editingId, payload);
 
       await fetchLeaves();
       await fetchBalance();
@@ -484,7 +462,7 @@ export function LeavePage() {
         type: "leave",
       });
     } catch (err: any) {
-      alert("Erreur lors de la mise à jour : " + err.message);
+      notify.error("Erreur lors de la mise à jour : " + err.message);
     } finally {
       setSubmitting(false);
       setUpdating(false);
@@ -494,16 +472,19 @@ export function LeavePage() {
 
   const handleDelete = async (id: string, status: string) => {
     if (status !== "submitted") {
-      alert("Seules les demandes en attente peuvent être supprimées.");
+      notify.error("Seules les demandes en attente peuvent être supprimées.");
       return;
     }
-    if (!confirm("Supprimer définitivement cette demande de congé ?")) return;
+    const confirmed = await confirm({
+      title: "Supprimer définitivement cette demande de congé ?",
+      message: "Cette action est irréversible.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
-      const { error } = await supabase
-        .from("leave_requests")
-        .delete()
-        .eq("id", id);
-      if (error) throw error;
+      await dbApi.remove("leave_requests", id);
       await fetchLeaves();
       void addNotification({
         title: "Demande de congé supprimée",
@@ -511,40 +492,31 @@ export function LeavePage() {
         type: "leave",
       });
     } catch (err: any) {
-      alert("Erreur lors de la suppression : " + err.message);
+      notify.error("Erreur lors de la suppression : " + err.message);
     }
   };
 
   const handleAddExtraDays = async () => {
     if (!user) return;
     if (extraDays <= 0) {
-      alert("Veuillez saisir un nombre positif.");
+      notify.error("Veuillez saisir un nombre positif.");
       return;
     }
     setAddingDays(true);
     try {
       const year = new Date().getFullYear();
-      const { data: balData, error: balError } = await supabase
-        .from("leave_balances")
-        .select("extra_days")
-        .eq("employee_id", user.id)
-        .eq("year", year)
-        .maybeSingle();
-      if (balError) throw balError;
-      const currentExtra = balData?.extra_days || 0;
+      const balData = await dbApi.list<any>("leave_balances", {
+        filters: { employee_id: user.id, year: String(year) },
+        limit: 1,
+      });
+      const currentExtra = balData?.[0]?.extra_days || 0;
       const newExtra = currentExtra + extraDays;
-      const { error: upsertError } = await supabase
-        .from("leave_balances")
-        .upsert(
-          {
-            employee_id: user.id,
-            year: year,
-            extra_days: newExtra,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "employee_id, year" },
-        );
-      if (upsertError) throw upsertError;
+      await dbApi.upsert("leave_balances", {
+        employee_id: user.id,
+        year: year,
+        extra_days: newExtra,
+        updated_at: new Date().toISOString(),
+      });
       await fetchBalance();
       setShowAddDaysModal(false);
       setExtraDays(0);
@@ -554,7 +526,7 @@ export function LeavePage() {
         type: "leave",
       });
     } catch (err: any) {
-      alert("Erreur lors de l'ajout : " + err.message);
+      notify.error("Erreur lors de l'ajout : " + err.message);
     } finally {
       setAddingDays(false);
     }
@@ -893,7 +865,6 @@ export function LeavePage() {
         </div>
       </div>
 
-      {/* MODAL DEMANDE DE CONGÉ */}
       {showRequest && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
@@ -1095,7 +1066,6 @@ export function LeavePage() {
         </div>
       )}
 
-      {/* MODAL AJOUT DE JOURS */}
       {showAddDaysModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
@@ -1148,7 +1118,6 @@ export function LeavePage() {
         </div>
       )}
 
-      {/* MODAL DATE D'EMBAUCHE */}
       {showHireDateModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"

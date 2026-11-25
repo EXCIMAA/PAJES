@@ -1,6 +1,6 @@
 // src/pages/cac/CACFollowUpPage.tsx
 import React, { useEffect, useState, useCallback } from "react";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import { useAuth } from "../../contexts/AuthContext";
 import { useCountry } from "../../contexts/CountryContext";
 import MissionTypeSelector from "./MissionTypeSelector";
@@ -102,47 +102,35 @@ export default function CACFollowUpPage() {
     setError(null);
 
     try {
-      const { data: taskData, error: taskError } = await supabase
-        .from("audit_tasks")
-        .select("*")
-        .eq("mission_type_id", missionTypeId)
-        .eq("is_active", true)
-        .order("display_order");
+      const taskData = await dbApi.list<Task>("audit_tasks", {
+        filters: {
+          mission_type_id: String(missionTypeId),
+          is_active: true,
+        } as unknown as Record<string, string>,
+        orderBy: "display_order",
+        limit: 500,
+      });
+      setTasks(taskData);
 
-      if (taskError) {
-        console.error("❌ Erreur chargement tâches :", taskError);
-        setError("Erreur chargement tâches : " + taskError.message);
-        setLoading(false);
-        return;
-      }
-      setTasks((taskData || []) as Task[]);
-
-      const { data: members, error: membersError } = await supabase
-        .from("profiles")
-        .select("full_name")
-        .eq("active", true)
-        .order("full_name");
-
-      if (membersError) {
+      try {
+        const members = await dbApi.list<TeamMember>("profiles", {
+          filters: { active: true } as unknown as Record<string, string>,
+          orderBy: "full_name",
+          limit: 500,
+        });
+        setTeamMembers(members);
+      } catch (membersError) {
         console.error("❌ Erreur chargement membres :", membersError);
       }
-      setTeamMembers((members || []) as TeamMember[]);
 
-      const { data: clientData, error: clientError } = await supabase
-        .from("clients")
-        .select("id, name, client_code")
-        .eq("country", "CMR")
-        .order("client_code");
-
-      if (clientError) {
-        console.error("❌ Erreur chargement clients :", clientError);
-        setError("Erreur chargement clients : " + clientError.message);
-        setLoading(false);
-        return;
-      }
+      const clientData = await dbApi.list<ClientInfo>("clients", {
+        filters: { country: "CMR" },
+        orderBy: "client_code",
+        limit: 500,
+      });
 
       console.log("✅ Clients chargés :", clientData?.length);
-      setAllClients((clientData || []) as ClientInfo[]);
+      setAllClients(clientData);
 
       const storageKey = `cac_clients_CMR_${missionTypeId}`;
       const savedIds: string[] = JSON.parse(
@@ -152,31 +140,37 @@ export default function CACFollowUpPage() {
       const clientIds =
         savedIds.length > 0
           ? savedIds
-          : (clientData || []).slice(0, 5).map((c) => c.id);
+          : clientData.slice(0, 5).map((c) => c.id);
 
-      const activeClients = (clientData || []).filter((c) =>
+      const activeClients = clientData.filter((c) =>
         clientIds.includes(c.id),
       );
       setSelectedClients(activeClients);
 
-      if (clientIds.length > 0 && (taskData || []).length > 0) {
-        const { data: assignData, error: assignError } = await supabase
-          .from("audit_mission_assignments")
-          .select(
-            "id, task_id, client_id, production_responsible, supervision_responsible, status, progress_percentage",
-          )
-          .eq("mission_type_id", missionTypeId)
-          .in("client_id", clientIds);
+      if (clientIds.length > 0 && taskData.length > 0) {
+        type AssignmentRow = {
+          id: string;
+          task_id: string;
+          client_id: string;
+          production_responsible: string[];
+          supervision_responsible: string[];
+          status: string;
+          progress_percentage: number;
+        };
+        const assignData = await dbApi.list<AssignmentRow>(
+          "audit_mission_assignments",
+          {
+            filters: { mission_type_id: String(missionTypeId) },
+            limit: 500,
+          },
+        );
 
-        if (assignError) {
-          console.error("❌ Erreur chargement assignations :", assignError);
-          setError("Erreur chargement assignations : " + assignError.message);
-          setLoading(false);
-          return;
-        }
+        const assignments = (assignData || []).filter((a) =>
+          clientIds.includes(a.client_id),
+        );
 
         const map: Record<string, CellData> = {};
-        for (const a of assignData || []) {
+        for (const a of assignments) {
           const key = cellKey(a.task_id, a.client_id);
           map[key] = {
             assignment_id: a.id,
@@ -190,7 +184,7 @@ export default function CACFollowUpPage() {
         const existingKeys = new Set(Object.keys(map));
         const missing: { client_id: string; task_id: string }[] = [];
         for (const cId of clientIds) {
-          for (const t of (taskData || []) as Task[]) {
+          for (const t of taskData) {
             if (!t.is_header) {
               const k = cellKey(t.id, cId);
               if (!existingKeys.has(k)) {
@@ -211,21 +205,14 @@ export default function CACFollowUpPage() {
             progress_percentage: 0,
             comments: "",
           }));
-          const { data: newAssign, error: insertError } = await supabase
-            .from("audit_mission_assignments")
-            .insert(inserts)
-            .select(
-              "id, task_id, client_id, production_responsible, supervision_responsible, status, progress_percentage",
-            );
 
-          if (insertError) {
-            console.error("❌ Erreur insertion assignations :", insertError);
-            setError("Erreur insertion assignations : " + insertError.message);
-            setLoading(false);
-            return;
-          }
+          const newAssign: any[] = await Promise.all(
+            inserts.map((insert) =>
+              dbApi.create("audit_mission_assignments", insert),
+            ),
+          );
 
-          for (const a of newAssign || []) {
+          for (const a of newAssign) {
             const key = cellKey(a.task_id, a.client_id);
             map[key] = {
               assignment_id: a.id,
@@ -303,22 +290,18 @@ export default function CACFollowUpPage() {
         const batch = updates.slice(i, i + batchSize);
         await Promise.all(
           batch.map(async ([, cell]) => {
-            const { error } = await supabase
-              .from("audit_mission_assignments")
-              .update({
-                production_responsible: cell.production
-                  ? [cell.production]
-                  : [],
-                supervision_responsible: cell.supervision
-                  ? [cell.supervision]
-                  : [],
-                status: cell.status,
-                progress_percentage: cell.progress_percentage,
-                last_updated_by: user?.id || null,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", cell.assignment_id);
-            if (error) throw error;
+            await dbApi.update("audit_mission_assignments", cell.assignment_id, {
+              production_responsible: cell.production
+                ? [cell.production]
+                : [],
+              supervision_responsible: cell.supervision
+                ? [cell.supervision]
+                : [],
+              status: cell.status,
+              progress_percentage: cell.progress_percentage,
+              last_updated_by: user?.id || null,
+              updated_at: new Date().toISOString(),
+            });
           }),
         );
       }

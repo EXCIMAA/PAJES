@@ -1,8 +1,9 @@
 // src/pages/NoteDeFrais/NoteDeFraisList.tsx
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import { addNotification } from "../../lib/notifications";
+import { useNotification, useConfirm } from "../../contexts/NotificationContext";
 import { format } from "date-fns";
 
 interface ExpenseReport {
@@ -107,14 +108,17 @@ export const NoteDeFraisList: React.FC<Props> = ({ onEdit, onRefresh }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  const { notify } = useNotification();
+  const confirm = useConfirm();
+
   const loadReports = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("expense_reports")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
+      const data = await dbApi.list<ExpenseReport>("expense_reports", {
+        orderBy: "created_at",
+        orderAsc: false,
+        limit: 500,
+      });
       setReports(data || []);
     } catch (err: any) {
       setError(err.message);
@@ -128,13 +132,16 @@ export const NoteDeFraisList: React.FC<Props> = ({ onEdit, onRefresh }) => {
   }, []);
 
   const handleSubmit = async (id: string) => {
-    if (!window.confirm("Soumettre cette note de frais à validation ?")) return;
+    const confirmed = await confirm({
+      title: "Soumettre cette note de frais ?",
+      message: "Cette note de frais sera envoyée pour validation.",
+      variant: "primary",
+      confirmLabel: "Soumettre",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
-      const { error } = await supabase
-        .from("expense_reports")
-        .update({ status: "soumis" })
-        .eq("id", id);
-      if (error) throw error;
+      await dbApi.update("expense_reports", id, { status: "soumis" });
       await loadReports();
       onRefresh();
       void addNotification({
@@ -143,18 +150,21 @@ export const NoteDeFraisList: React.FC<Props> = ({ onEdit, onRefresh }) => {
         type: "expense",
       });
     } catch (err: any) {
-      alert("Erreur : " + err.message);
+      notify.error("Erreur : " + err.message);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Supprimer cette note de frais ?")) return;
+    const confirmed = await confirm({
+      title: "Supprimer cette note de frais ?",
+      message: "Cette action est irréversible.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
-      const { error } = await supabase
-        .from("expense_reports")
-        .delete()
-        .eq("id", id);
-      if (error) throw error;
+      await dbApi.remove("expense_reports", id);
       await loadReports();
       onRefresh();
       void addNotification({
@@ -163,7 +173,7 @@ export const NoteDeFraisList: React.FC<Props> = ({ onEdit, onRefresh }) => {
         type: "expense",
       });
     } catch (err: any) {
-      alert("Erreur : " + err.message);
+      notify.error("Erreur : " + err.message);
     }
   };
 

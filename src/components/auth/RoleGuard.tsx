@@ -8,6 +8,8 @@ interface RoleGuardProps {
   children: ReactNode;
 }
 
+export const RESTRICTED_ROLE = "user";
+
 export function RoleGuard({ children }: RoleGuardProps) {
   const { user, loading, isDemo } = useAuth();
   const { isDemo: isDemoContext } = useDemo();
@@ -24,6 +26,12 @@ export function RoleGuard({ children }: RoleGuardProps) {
 
   if (inDemo) return <>{children}</>;
   if (!user) return <>{children}</>;
+
+  // A restricted account has no module access until an administrator assigns
+  // a real role. Backend authorization stays authoritative; this is UX only.
+  if (user.role === RESTRICTED_ROLE) {
+    return <Navigate to="/pending-approval" replace />;
+  }
 
   const hasNoRole = !user.role || user.role === "";
   if (hasNoRole) {

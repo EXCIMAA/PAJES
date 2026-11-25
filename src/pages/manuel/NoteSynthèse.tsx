@@ -1,7 +1,7 @@
 // src/pages/manuel/NoteSynthèse.tsx
 import React, { useEffect, useState, useRef } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import { upsertManualToolContent } from "../../lib/manualToolPersistence";
 import * as mammoth from "mammoth";
 
@@ -253,14 +253,12 @@ const NoteSynthèse: React.FC = () => {
     const fetchContent = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase
-          .from("outils_manuel")
-          .select("contenu")
-          .eq("code", OUTIL_CODE)
-          .single();
+        const data = await dbApi.list<any>("outils_manuel", {
+          filters: { code: OUTIL_CODE },
+          limit: 500,
+        });
 
-        if (error) throw error;
-        setContent(data?.contenu || "");
+        setContent(data?.[0]?.contenu || "");
       } catch (err) {
         console.error("Erreur chargement:", err);
         setError("Impossible de charger la note de synthèse.");

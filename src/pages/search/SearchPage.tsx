@@ -11,7 +11,7 @@ import {
   CalendarDays,
   X,
 } from "lucide-react";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import { cn } from "../../lib/utils";
 
 interface SearchResult {
@@ -50,130 +50,135 @@ export default function SearchPage() {
     setLoading(true);
     setError(null);
     try {
-      const term = `%${searchTerm}%`;
+      const term = searchTerm.toLowerCase();
+      const match = (row: any, fields: string[]) =>
+        fields.some((f) => String(row[f] || "").toLowerCase().includes(term));
       const results: SearchResult[] = [];
 
       // 1. Clients
-      const { data: clients } = await supabase
-        .from("clients")
-        .select("id, name, email, contact_person")
-        .or(
-          `name.ilike.${term}, email.ilike.${term}, contact_person.ilike.${term}`,
-        );
-      if (clients) {
-        clients.forEach((c: any) => {
-          results.push({
-            id: c.id,
-            title: c.name,
-            description: c.email || c.contact_person || "Client",
-            type: "client",
-            link: `/clients`,
-          });
+      try {
+        const clients = await dbApi.list("clients", { limit: 1000 });
+        (clients || []).forEach((c: any) => {
+          if (match(c, ["name", "email", "contact_person"])) {
+            results.push({
+              id: c.id,
+              title: c.name,
+              description: c.email || c.contact_person || "Client",
+              type: "client",
+              link: `/clients`,
+            });
+          }
         });
+      } catch (e) {
+        console.warn("Clients error:", e);
       }
 
       // 2. Engagements (missions)
-      const { data: engagements } = await supabase
-        .from("engagements")
-        .select("id, code, client_name, subject")
-        .or(
-          `code.ilike.${term}, client_name.ilike.${term}, subject.ilike.${term}`,
-        );
-      if (engagements) {
-        engagements.forEach((e: any) => {
-          results.push({
-            id: e.id,
-            title: e.code || e.subject,
-            description: e.client_name || "Mission",
-            type: "engagement",
-            link: `/engagements`,
-          });
+      try {
+        const engagements = await dbApi.list("engagements", { limit: 1000 });
+        (engagements || []).forEach((e: any) => {
+          if (match(e, ["code", "client_name", "subject"])) {
+            results.push({
+              id: e.id,
+              title: e.code || e.subject,
+              description: e.client_name || "Mission",
+              type: "engagement",
+              link: `/engagements`,
+            });
+          }
         });
+      } catch (e) {
+        console.warn("Engagements error:", e);
       }
 
       // 3. Findings (constats)
-      const { data: findings } = await supabase
-        .from("findings")
-        .select("id, finding, risk_level")
-        .or(`finding.ilike.${term}`);
-      if (findings) {
-        findings.forEach((f: any) => {
-          results.push({
-            id: f.id,
-            title: f.finding.substring(0, 60),
-            description: `Niveau : ${f.risk_level || "Non défini"}`,
-            type: "finding",
-            link: `/findings`,
-          });
+      try {
+        const findings = await dbApi.list("findings", { limit: 1000 });
+        (findings || []).forEach((f: any) => {
+          if (match(f, ["finding"])) {
+            results.push({
+              id: f.id,
+              title: f.finding.substring(0, 60),
+              description: `Niveau : ${f.risk_level || "Non défini"}`,
+              type: "finding",
+              link: `/findings`,
+            });
+          }
         });
+      } catch (e) {
+        console.warn("Findings error:", e);
       }
 
       // 4. Review Notes
-      const { data: reviewNotes } = await supabase
-        .from("review_notes")
-        .select("id, reference, description")
-        .or(`reference.ilike.${term}, description.ilike.${term}`);
-      if (reviewNotes) {
-        reviewNotes.forEach((r: any) => {
-          results.push({
-            id: r.id,
-            title: r.reference,
-            description: r.description || "Note de revue",
-            type: "review_note",
-            link: `/review-notes`,
-          });
+      try {
+        const reviewNotes = await dbApi.list("review_notes", { limit: 1000 });
+        (reviewNotes || []).forEach((r: any) => {
+          if (match(r, ["reference", "description"])) {
+            results.push({
+              id: r.id,
+              title: r.reference,
+              description: r.description || "Note de revue",
+              type: "review_note",
+              link: `/review-notes`,
+            });
+          }
         });
+      } catch (e) {
+        console.warn("Review notes error:", e);
       }
 
       // 5. Stock
-      const { data: stockItems } = await supabase
-        .from("stock_items")
-        .select("id, item_name, category")
-        .or(`item_name.ilike.${term}, category.ilike.${term}`);
-      if (stockItems) {
-        stockItems.forEach((s: any) => {
-          results.push({
-            id: s.id,
-            title: s.item_name,
-            description: s.category || "Article",
-            type: "stock",
-            link: `/stock`,
-          });
+      try {
+        const stockItems = await dbApi.list("stock_items", { limit: 1000 });
+        (stockItems || []).forEach((s: any) => {
+          if (match(s, ["item_name", "category"])) {
+            results.push({
+              id: s.id,
+              title: s.item_name,
+              description: s.category || "Article",
+              type: "stock",
+              link: `/stock`,
+            });
+          }
         });
+      } catch (e) {
+        console.warn("Stock error:", e);
       }
 
       // 6. Leave requests
-      const { data: leaves } = await supabase
-        .from("leave_requests")
-        .select("id, employee_name, leave_type")
-        .or(`employee_name.ilike.${term}, leave_type.ilike.${term}`);
-      if (leaves) {
-        leaves.forEach((l: any) => {
-          results.push({
-            id: l.id,
-            title: l.employee_name || "Congé",
-            description: l.leave_type || "",
-            type: "leave",
-            link: `/leave`,
-          });
+      try {
+        const leaves = await dbApi.list("leave_requests", { limit: 1000 });
+        (leaves || []).forEach((l: any) => {
+          if (match(l, ["employee_name", "leave_type"])) {
+            results.push({
+              id: l.id,
+              title: l.employee_name || "Congé",
+              description: l.leave_type || "",
+              type: "leave",
+              link: `/leave`,
+            });
+          }
         });
+      } catch (e) {
+        console.warn("Leave error:", e);
       }
 
       // 7. Team (profiles)
-      const { data: teamMembers } = await supabase
-        .from("profiles")
-        .select("id, full_name, email")
-        .or(`full_name.ilike.${term}, email.ilike.${term}`);
-      if (teamMembers) {
-        teamMembers.forEach((p: any) => {
-          results.push({
-            id: p.id,
-            title: p.full_name,
-            description: p.email || "Membre de l'équipe",
-            type: "team",
-            link: `/team`,
-          });
+      try {
+        const teamMembers = await dbApi.list("profiles", { limit: 1000 });
+        (teamMembers || []).forEach((p: any) => {
+          if (match(p, ["full_name", "email"])) {
+            results.push({
+              id: p.id,
+              title: p.full_name,
+              description: p.email || "Membre de l'équipe",
+              type: "team",
+              link: `/team`,
+            });
+          }
         });
+      } catch (e) {
+        console.warn("Team error:", e);
       }
 
       // Trier les résultats par date si disponible (approximatif)

@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { Edit2, Download, ArrowLeft } from "lucide-react";
 import { addNotification } from "../../lib/notifications";
+import { useNotification } from "../../contexts/NotificationContext";
 import { InvoiceTemplate } from "../../components/InvoiceTemplate";
 import html2pdf from "html2pdf.js";
 import { useAuth } from "../../contexts/AuthContext";
@@ -26,6 +27,7 @@ const statusLabels: Record<string, string> = {
 
 export default function InvoiceDetailPage() {
   const { user } = useAuth();
+  const { notify } = useNotification();
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
@@ -136,7 +138,7 @@ export default function InvoiceDetailPage() {
           ? updateError.message
           : "Erreur lors de la mise à jour du statut.",
       );
-      alert(
+      notify.error(
         "Erreur lors de la mise à jour du statut : " +
           (updateError instanceof Error ? updateError.message : "Erreur inconnue"),
       );

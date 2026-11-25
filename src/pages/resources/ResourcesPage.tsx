@@ -1,15 +1,13 @@
 // src/pages/resources/ResourcesPage.tsx
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Upload, FileText, Trash2, FolderOpen } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { Badge } from "../../components/ui/Badge";
 import { DocumentLink } from "../../components/DocumentLink";
 import { addNotification } from "../../lib/notifications";
-import { useSupabaseQuery } from "../../hooks/useSupabaseData";
-import { supabase } from "../../lib/supabase";
-import { ProtectedAction } from "../../components/auth/ProtectedAction"; // ✅ ADDED
-
-const BUCKET_NAME = "cabinet-resources";
+import { useNotification, useConfirm } from "../../contexts/NotificationContext";
+import { dbApi, fileApi } from "../../lib/apiClient";
+import { ProtectedAction } from "../../components/auth/ProtectedAction";
 
 interface Resource {
   id: string;
@@ -17,64 +15,80 @@ interface Resource {
   category: "regles" | "manuel";
   file_name: string;
   file_path: string;
+  storage_path?: string;
   file_size: number;
   file_type: string;
   uploaded_by?: string;
   created_at: string;
 }
 
-export function ResourcesPage() {
-  const { data: resources, refetch } = useSupabaseQuery<Resource>({
-    table: "cabinet_resources",
-    orderBy: "created_at",
-    orderAsc: false,
-  });
+const BUCKET_NAME = "cabinet-resources";
 
+export function ResourcesPage() {
+  const [resources, setResources] = useState<Resource[]>([]);
+  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [category, setCategory] = useState<"regles" | "manuel">("regles");
   const [title, setTitle] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const regles = resources?.filter((r) => r.category === "regles") || [];
-  const manuels = resources?.filter((r) => r.category === "manuel") || [];
+  const { notify } = useNotification();
+  const confirm = useConfirm();
+
+  const fetchResources = async () => {
+    setLoading(true);
+    try {
+      const data = await dbApi.list<Resource>("cabinet_resources", {
+        orderBy: "created_at",
+        orderAsc: false,
+        limit: 500,
+      });
+      setResources(data);
+    } catch (err: any) {
+      console.error("Erreur chargement ressources :", err);
+      setResources([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const regles = resources.filter((r) => r.category === "regles");
+  const manuels = resources.filter((r) => r.category === "manuel");
+
+  useEffect(() => {
+    fetchResources();
+  }, []);
 
   const handleUpload = async () => {
     if (!file) {
-      alert("Veuillez sélectionner un fichier");
+      notify.error("Veuillez sélectionner un fichier");
       return;
     }
     if (!title.trim()) {
-      alert("Veuillez saisir un titre");
+      notify.error("Veuillez saisir un titre");
       return;
     }
 
     setUploading(true);
     try {
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${Date.now()}_${file.name}`;
-      const filePath = `resources/${category}/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from(BUCKET_NAME)
-        .upload(filePath, file);
-      if (uploadError) throw uploadError;
+      const uploadResult = await fileApi.upload(file, {
+        bucket: BUCKET_NAME,
+        folder: `resources/${category}`,
+      });
 
       const payload = {
         title: title.trim(),
         category,
         file_name: file.name,
-        file_path: filePath,
+        file_path: uploadResult.storage_path,
         file_size: Math.round(file.size / 1024),
-        file_type: fileExt || "unknown",
+        file_type: file.name.split(".").pop() || "unknown",
       };
 
-      const { error: insertError } = await supabase
-        .from("cabinet_resources")
-        .insert([payload]);
-      if (insertError) throw insertError;
+      await dbApi.create("cabinet_resources", payload);
 
-      await refetch();
+      setResources([...resources, { id: uploadResult.id, ...payload, created_at: new Date().toISOString() }]);
       void addNotification({
         title: "Document ajouté",
         message: `Le document "${title}" a été téléversé.`,
@@ -86,30 +100,25 @@ export function ResourcesPage() {
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err: any) {
       console.error("Erreur upload :", err);
-      alert("Erreur : " + (err.message || "Inconnue"));
+      notify.error("Erreur : " + (err.message || "Inconnue"));
     } finally {
       setUploading(false);
     }
   };
 
   const handleDelete = async (resource: Resource) => {
-    if (!confirm(`Supprimer définitivement "${resource.title}" ?`)) return;
+    const confirmed = await confirm({
+      title: "Supprimer définitivement ce document ?",
+      message: `Le document "${resource.title}" sera définitivement retiré.`,
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
-      if (resource.file_path) {
-        const urlParts = resource.file_path.split("/");
-        const filePath = urlParts
-          .slice(urlParts.indexOf(BUCKET_NAME) + 1)
-          .join("/");
-        if (filePath) {
-          await supabase.storage.from(BUCKET_NAME).remove([filePath]);
-        }
-      }
-      const { error } = await supabase
-        .from("cabinet_resources")
-        .delete()
-        .eq("id", resource.id);
-      if (error) throw error;
-      await refetch();
+      await fileApi.remove(resource.id);
+      await dbApi.remove("cabinet_resources", resource.id);
+      setResources(resources.filter((r) => r.id !== resource.id));
       void addNotification({
         title: "Document supprimé",
         message: `Le document "${resource.title}" a été supprimé.`,
@@ -117,7 +126,7 @@ export function ResourcesPage() {
       });
     } catch (err: any) {
       console.error("Erreur suppression :", err);
-      alert("Erreur : " + (err.message || "Inconnue"));
+      notify.error("Erreur : " + (err.message || "Inconnue"));
     }
   };
 
@@ -151,7 +160,6 @@ export function ResourcesPage() {
                 className="input-md flex-1"
                 disabled={uploading}
               />
-              {/* ✅ WRAPPED: Upload button (create) */}
               <ProtectedAction module="ressources_internes" action="create">
                 <button
                   onClick={() => {
@@ -180,7 +188,6 @@ export function ResourcesPage() {
             {file && category === "regles" && (
               <p className="text-xs text-slate-400">
                 📄 {file.name} ({Math.round(file.size / 1024)} Ko) —{" "}
-                {/* ✅ WRAPPED: Téléverser link */}
                 <ProtectedAction module="ressources_internes" action="create">
                   <button
                     onClick={handleUpload}
@@ -214,13 +221,12 @@ export function ResourcesPage() {
                   <div className="flex items-center gap-1 shrink-0">
                     {doc.file_path && (
                       <DocumentLink
-                        filePath={doc.file_path}
+                        filePath={doc.storage_path || doc.file_path}
                         bucket={BUCKET_NAME}
                         label=""
                         className="p-1 rounded hover:bg-slate-700/50"
                       />
                     )}
-                    {/* ✅ WRAPPED: Delete (delete) */}
                     <ProtectedAction
                       module="ressources_internes"
                       action="delete"
@@ -262,7 +268,6 @@ export function ResourcesPage() {
                 className="input-md flex-1"
                 disabled={uploading}
               />
-              {/* ✅ WRAPPED: Upload button (create) */}
               <ProtectedAction module="ressources_internes" action="create">
                 <button
                   onClick={() => {
@@ -291,7 +296,6 @@ export function ResourcesPage() {
             {file && category === "manuel" && (
               <p className="text-xs text-slate-400">
                 📄 {file.name} ({Math.round(file.size / 1024)} Ko) —{" "}
-                {/* ✅ WRAPPED: Téléverser link */}
                 <ProtectedAction module="ressources_internes" action="create">
                   <button
                     onClick={handleUpload}
@@ -325,13 +329,12 @@ export function ResourcesPage() {
                   <div className="flex items-center gap-1 shrink-0">
                     {doc.file_path && (
                       <DocumentLink
-                        filePath={doc.file_path}
+                        filePath={doc.storage_path || doc.file_path}
                         bucket={BUCKET_NAME}
                         label=""
                         className="p-1 rounded hover:bg-slate-700/50"
                       />
                     )}
-                    {/* ✅ WRAPPED: Delete (delete) */}
                     <ProtectedAction
                       module="ressources_internes"
                       action="delete"
@@ -351,6 +354,12 @@ export function ResourcesPage() {
           </div>
         </div>
       </div>
+
+      {loading && (
+        <div className="flex items-center justify-center h-40">
+          <span className="text-slate-400">Chargement…</span>
+        </div>
+      )}
     </div>
   );
 }

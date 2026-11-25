@@ -23,6 +23,7 @@ from app.models.auth import (
     Profile,
     UserCredential,
 )
+from app.permissions.matrix import ALL_ROLES, DEFAULT_SIGNUP_ROLE
 from app.schemas.auth import ActivateAccountRequest, LoginRequest, SignupRequest
 
 logger = logging.getLogger(__name__)
@@ -280,7 +281,7 @@ def signup(db: Session, body: SignupRequest) -> AuthEmail | None:
                     id=user_id,
                     email=email,
                     full_name=f"{body.first_name} {body.last_name}".strip(),
-                    role="stagiaires",
+                    role=DEFAULT_SIGNUP_ROLE,
                     active=True,
                 )
                 db.add(profile)
@@ -743,6 +744,11 @@ def update_profile(
 
 
 def update_user_role(db: Session, target_user_id: str, new_role: str) -> Profile:
+    if new_role not in ALL_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Rôle inconnu : {new_role}",
+        )
     profile = db.query(Profile).filter(Profile.id == target_user_id).first()
     if not profile:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")

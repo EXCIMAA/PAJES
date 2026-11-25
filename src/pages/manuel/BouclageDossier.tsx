@@ -1,8 +1,9 @@
 // src/pages/manuel/BouclageDossier.tsx
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import * as XLSX from "xlsx";
+import { useNotification } from "../../contexts/NotificationContext";
 
 // ==================== STYLES ====================
 const Container = styled.div`
@@ -344,6 +345,7 @@ const BouclageDossier: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const { notify } = useNotification();
 
   // Helper pour les erreurs
   const getErrorMessage = (err: unknown): string => {
@@ -357,11 +359,10 @@ const BouclageDossier: React.FC = () => {
     const fetchClients = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase
-          .from("clients")
-          .select("id, client_code, name, status, niveau_risque, date_cloture")
-          .order("name");
-        if (error) throw error;
+        const data = await dbApi.list<any>("clients", {
+          orderBy: "name",
+          limit: 500,
+        });
         setClients(data || []);
         if (data && data.length > 0) setSelectedClientId(data[0].id);
       } catch (err) {
@@ -386,12 +387,10 @@ const BouclageDossier: React.FC = () => {
   const fetchStatuses = async (clientId: string) => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("bouclage_dossier_status")
-        .select("document_id, status, observation")
-        .eq("client_id", clientId);
-
-      if (error) throw error;
+      const data = await dbApi.list<any>("bouclage_dossier_status", {
+        filters: { client_id: clientId },
+        limit: 500,
+      });
 
       const allDocumentIds = DOCUMENTS.flatMap((cat) => cat.items);
       const initialStatuses: DocumentStatus[] = allDocumentIds.map((id) => {
@@ -436,23 +435,22 @@ const BouclageDossier: React.FC = () => {
         updated_at: new Date().toISOString(),
       }));
 
-      const { error: delError } = await supabase
-        .from("bouclage_dossier_status")
-        .delete()
-        .eq("client_id", selectedClientId);
+      const existing = await dbApi.list<any>("bouclage_dossier_status", {
+        filters: { client_id: selectedClientId },
+        limit: 500,
+      });
+      for (const row of existing) {
+        await dbApi.remove("bouclage_dossier_status", row.id);
+      }
 
-      if (delError) throw delError;
+      for (const row of updates) {
+        await dbApi.create("bouclage_dossier_status", row);
+      }
 
-      const { error: insError } = await supabase
-        .from("bouclage_dossier_status")
-        .insert(updates);
-
-      if (insError) throw insError;
-
-      alert("Bouclage du dossier sauvegardé !");
+      notify.success("Bouclage du dossier sauvegardé !");
     } catch (err) {
       console.error("Erreur sauvegarde:", err);
-      alert("Erreur : " + getErrorMessage(err));
+      notify.error("Erreur : " + getErrorMessage(err));
     } finally {
       setSaving(false);
     }

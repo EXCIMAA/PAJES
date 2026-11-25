@@ -14,12 +14,12 @@ import {
 import { PageHeader } from "../../components/ui/PageHeader";
 import { Badge } from "../../components/ui/Badge";
 import { cn, formatDate } from "../../lib/utils";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import { addNotification } from "../../lib/notifications";
-import { useSupabaseQuery } from "../../hooks/useSupabaseData";
+import { useNotification, useConfirm } from "../../contexts/NotificationContext";
 import { SEVERITY_LABELS } from "../../lib/constants";
 import type { ReviewNote } from "../../types";
-import { ProtectedAction } from "../../components/auth/ProtectedAction"; // ✅ ADDED
+import { ProtectedAction } from "../../components/auth/ProtectedAction";
 
 const STATUS_OPTIONS = {
   open: "Ouvert",
@@ -34,11 +34,7 @@ const SEVERITY_OPTIONS = {
 } as const;
 
 export function ReviewNotesPage() {
-  const { data: notes, refetch } = useSupabaseQuery<ReviewNote>({
-    table: "review_notes",
-    orderBy: "created_at",
-    orderAsc: false,
-  });
+  const [notes, setNotes] = useState<ReviewNote[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showDetail, setShowDetail] = useState(false);
@@ -62,14 +58,40 @@ export function ReviewNotesPage() {
   const [showAddUser, setShowAddUser] = useState(false);
   const [newUserForm, setNewUserForm] = useState({ full_name: "" });
 
+  const { notify } = useNotification();
+  const confirm = useConfirm();
+
+  const fetchNotes = async () => {
+    try {
+      const data = await dbApi.list<ReviewNote>("review_notes", {
+        orderBy: "created_at",
+        orderAsc: false,
+        limit: 500,
+      });
+      setNotes(data);
+    } catch (err: any) {
+      console.error("Erreur chargement notes de revue:", err);
+      setNotes([]);
+    }
+  };
+
   useEffect(() => {
-    const fetchProfiles = async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .order("full_name");
-      if (!error) setProfiles(data || []);
-    };
+    fetchNotes();
+  }, []);
+
+  const fetchProfiles = async () => {
+    try {
+      const data = await dbApi.list<{ id: string; full_name: string }>(
+        "profiles",
+        { orderBy: "full_name", limit: 500 },
+      );
+      setProfiles(data || []);
+    } catch (err: any) {
+      console.error("Erreur chargement profils:", err);
+    }
+  };
+
+  useEffect(() => {
     fetchProfiles();
   }, []);
 
@@ -95,37 +117,41 @@ export function ReviewNotesPage() {
       assigned_to_id: null,
     };
     if (editingNote) {
-      await supabase
-        .from("review_notes")
-        .update(payload)
-        .eq("id", editingNote.id);
+      await dbApi.update("review_notes", editingNote.id, payload);
       void addNotification({
         title: "Note de revue mise à jour",
         message: `La note ${editingNote.reference} a été mise à jour.`,
         type: "review_note",
       });
     } else {
-      await supabase.from("review_notes").insert([payload]);
+      await dbApi.create("review_notes", payload);
       void addNotification({
         title: "Nouvelle note de revue",
         message: "Une note de revue a été créée.",
         type: "review_note",
       });
     }
-    refetch();
+    await fetchNotes();
     setShowModal(false);
     setEditingNote(null);
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Supprimer cette note ?")) return;
-    await supabase.from("review_notes").delete().eq("id", id);
+    const confirmed = await confirm({
+      title: "Supprimer cette note ?",
+      message: "Cette action est irréversible.",
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
+    await dbApi.remove("review_notes", id);
     void addNotification({
       title: "Note de revue supprimée",
       message: "Une note de revue a été supprimée.",
       type: "review_note",
     });
-    refetch();
+    await fetchNotes();
   };
 
   const openEdit = (note: ReviewNote) => {
@@ -144,16 +170,14 @@ export function ReviewNotesPage() {
   };
 
   const handleAddUser = async () => {
-    if (!newUserForm.full_name.trim()) return alert("Veuillez saisir un nom");
-    const { data, error } = await supabase
-      .from("profiles")
-      .insert([{ full_name: newUserForm.full_name.trim() }])
-      .select()
-      .single();
-    if (error) {
-      alert("Erreur lors de l'ajout");
+    if (!newUserForm.full_name.trim()) {
+      notify.error("Veuillez saisir un nom");
       return;
     }
+    const data = await dbApi.create<{ id: string; full_name: string }>(
+      "profiles",
+      { full_name: newUserForm.full_name.trim() },
+    );
     setProfiles((prev) => [...prev, data]);
     setForm((p) => ({ ...p, assigned_to_name: data.full_name }));
     setShowAddUser(false);
@@ -166,7 +190,6 @@ export function ReviewNotesPage() {
         title="Notes de revue"
         description="Suivez et gérez les anomalies d'audit"
         actions={
-          // ✅ WRAPPED: Nouvelle note
           <ProtectedAction module="review_notes" action="create">
             <button
               onClick={() => {
@@ -327,7 +350,6 @@ export function ReviewNotesPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
-                      {/* ✅ WRAPPED: View */}
                       <ProtectedAction module="review_notes" action="view">
                         <button
                           onClick={() => {
@@ -340,7 +362,6 @@ export function ReviewNotesPage() {
                           <Eye className="w-4 h-4" />
                         </button>
                       </ProtectedAction>
-                      {/* ✅ WRAPPED: Edit */}
                       <ProtectedAction module="review_notes" action="edit">
                         <button
                           onClick={() => openEdit(note)}
@@ -350,7 +371,6 @@ export function ReviewNotesPage() {
                           <Edit className="w-4 h-4" />
                         </button>
                       </ProtectedAction>
-                      {/* ✅ WRAPPED: Delete */}
                       <ProtectedAction module="review_notes" action="delete">
                         <button
                           onClick={() => handleDelete(note.id)}
@@ -551,7 +571,6 @@ export function ReviewNotesPage() {
                       </option>
                     ))}
                   </select>
-                  {/* ✅ WRAPPED: Ajouter un utilisateur (collaborateurs:create) */}
                   <ProtectedAction module="collaborateurs" action="create">
                     <button
                       type="button"
@@ -593,7 +612,6 @@ export function ReviewNotesPage() {
               </div>
 
               <div className="flex gap-3 pt-2">
-                {/* ✅ WRAPPED: Save (create or edit) */}
                 <ProtectedAction
                   module="review_notes"
                   action={editingNote ? "edit" : "create"}

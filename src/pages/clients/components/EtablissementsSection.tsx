@@ -39,6 +39,8 @@ export function EtablissementsSection({
   });
   const [saving, setSaving] = useState(false);
 
+  const confirm = useConfirm();
+
   const loadEtablissements = async () => {
     if (!clientId) {
       setLoading(false);
@@ -69,7 +71,7 @@ export function EtablissementsSection({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      alert("Le nom de l'établissement est requis");
+      notify.error("Le nom de l'établissement est requis");
       return;
     }
 
@@ -101,20 +103,27 @@ export function EtablissementsSection({
       resetForm();
     } catch (err) {
       console.error("Erreur sauvegarde:", err);
-      alert("Erreur lors de la sauvegarde");
+      notify.error("Erreur lors de la sauvegarde");
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Supprimer l'établissement "${name}" ?`)) return;
+    const confirmed = await confirm({
+      title: "Supprimer cet établissement ?",
+      message: `L'établissement "${name}" sera définitivement retiré.`,
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
     try {
       await clientsApi.deleteEstablishment(clientId, id);
       await loadEtablissements();
     } catch (err) {
       console.error("Erreur suppression:", err);
-      alert("Erreur lors de la suppression");
+      notify.error("Erreur lors de la suppression");
     }
   };
 

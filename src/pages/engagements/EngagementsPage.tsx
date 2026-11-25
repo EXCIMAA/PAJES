@@ -13,8 +13,9 @@ import {
 import { PageHeader } from "../../components/ui/PageHeader";
 import { Badge } from "../../components/ui/Badge";
 import { cn, formatShortDate } from "../../lib/utils";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import { addNotification } from "../../lib/notifications";
+import { useNotification, useConfirm } from "../../contexts/NotificationContext";
 import { MISSION_STATUS_CONFIG, URGENCY_CONFIG } from "../../lib/constants";
 import type { WeeklyMission, Client, Profile } from "../../types";
 import { useAuth } from "../../contexts/AuthContext";
@@ -23,6 +24,8 @@ import { buildAccessFilter } from "../../lib/permissions";
 
 export function EngagementsPage() {
   const { user, profile } = useAuth();
+  const { notify } = useNotification();
+  const confirm = useConfirm();
   const [missions, setMissions] = useState<WeeklyMission[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -81,30 +84,31 @@ export function EngagementsPage() {
         assignmentColumn: "responsible_id",
       });
 
-      let q = supabase
-        .from("weekly_missions")
-        .select("*")
-        .order("date", { ascending: false });
+      const missionsData = await dbApi.list<WeeklyMission>("weekly_missions", {
+        orderBy: "date",
+        orderAsc: false,
+        limit: 500,
+      });
+      setMissions(
+        missionsData.filter((m) => {
+          if (!accessFilter) return true;
+          const createdBy = (m as WeeklyMission & { created_by?: string })
+            .created_by;
+          return createdBy === user.id || m.responsible_id === user.id;
+        }),
+      );
 
-      if (accessFilter) q = q.or(accessFilter);
+      const clientsData = await dbApi.list<Client>("clients", {
+        orderBy: "name",
+        limit: 500,
+      });
+      setClients(clientsData || []);
 
-      const { data: missionsData, error: missionsError } = await q;
-      if (missionsError) throw missionsError;
-      setMissions(missionsData || []);
-
-      const { data: clientsData, error: clientsError } = await supabase
-        .from("clients")
-        .select("*")
-        .order("name");
-      if (clientsError) throw clientsError;
-      setClients((clientsData || []) as Client[]);
-
-      const { data: profilesData, error: profilesError } = await supabase
-        .from("profiles")
-        .select("*")
-        .order("full_name");
-      if (profilesError) throw profilesError;
-      setProfiles((profilesData || []) as Profile[]);
+      const profilesData = await dbApi.list<Profile>("profiles", {
+        orderBy: "full_name",
+        limit: 500,
+      });
+      setProfiles(profilesData || []);
     } catch (err: any) {
       console.error("Erreur chargement :", err);
     } finally {
@@ -145,12 +149,9 @@ export function EngagementsPage() {
     };
 
     if (editingMission) {
-      await supabase
-        .from("weekly_missions")
-        .update(payload)
-        .eq("id", editingMission.id);
+      await dbApi.update("weekly_missions", editingMission.id, payload);
     } else {
-      await supabase.from("weekly_missions").insert([payload]);
+      await dbApi.create("weekly_missions", payload);
     }
 
     const newStatus = form.status;
@@ -177,24 +178,18 @@ export function EngagementsPage() {
 
   // Supprimer
   const handleDelete = async (id: string, subject: string) => {
-    if (
-      !confirm(
-        `Supprimer la mission "${subject}" ? Cette action est irréversible.`,
-      )
-    )
-      return;
+    const confirmed = await confirm({
+      title: "Supprimer la mission ?",
+      message: `La mission "${subject}" sera supprimée. Cette action est irréversible.`,
+      variant: "danger",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+    });
+    if (!confirmed) return;
 
     setDeletingId(id);
     try {
-      const { error } = await supabase
-        .from("weekly_missions")
-        .delete()
-        .eq("id", id);
-      if (error) {
-        alert("Erreur lors de la suppression : " + error.message);
-        setDeletingId(null);
-        return;
-      }
+      await dbApi.remove("weekly_missions", id);
       void addNotification({
         title: "Mission supprimée",
         message: `La mission "${subject}" a été supprimée.`,
@@ -202,7 +197,7 @@ export function EngagementsPage() {
       });
       await fetchData();
     } catch (err: any) {
-      alert("Erreur : " + err.message);
+      notify.error("Erreur : " + err.message);
     } finally {
       setDeletingId(null);
     }
@@ -229,48 +224,36 @@ export function EngagementsPage() {
 
   // Ajout rapide d'un client
   const handleAddClient = async () => {
-    const { data, error } = await supabase
-      .from("clients")
-      .insert([
-        {
-          name: newClientForm.name,
-          email: newClientForm.email,
-          contact_person: newClientForm.contact_person,
-          status: "active",
-        },
-      ])
-      .select()
-      .single();
-    if (!error && data) {
-      setClients([...clients, data as Client]);
+    try {
+      const data = await dbApi.create<Client>("clients", {
+        name: newClientForm.name,
+        email: newClientForm.email,
+        contact_person: newClientForm.contact_person,
+        status: "active",
+      });
+      setClients([...clients, data]);
       setShowAddClient(false);
       setNewClientForm({ name: "", email: "", contact_person: "" });
-    } else {
-      alert("Erreur lors de l'ajout du client");
+    } catch (err: any) {
+      notify.error("Erreur lors de l'ajout du client");
     }
   };
 
   // Ajout rapide d'un responsable
   const handleAddResponsible = async () => {
-    const { data, error } = await supabase
-      .from("profiles")
-      .insert([
-        {
-          first_name: newResponsibleForm.first_name,
-          last_name: newResponsibleForm.last_name,
-          email: newResponsibleForm.email,
-          full_name:
-            `${newResponsibleForm.first_name} ${newResponsibleForm.last_name}`.trim(),
-        },
-      ])
-      .select()
-      .single();
-    if (!error && data) {
-      setProfiles([...profiles, data as Profile]);
+    try {
+      const data = await dbApi.create<Profile>("profiles", {
+        first_name: newResponsibleForm.first_name,
+        last_name: newResponsibleForm.last_name,
+        email: newResponsibleForm.email,
+        full_name:
+          `${newResponsibleForm.first_name} ${newResponsibleForm.last_name}`.trim(),
+      });
+      setProfiles([...profiles, data]);
       setShowAddResponsible(false);
       setNewResponsibleForm({ first_name: "", last_name: "", email: "" });
-    } else {
-      alert("Erreur lors de l'ajout du responsable");
+    } catch (err: any) {
+      notify.error("Erreur lors de l'ajout du responsable");
     }
   };
 

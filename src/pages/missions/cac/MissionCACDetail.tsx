@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { Edit2, FileText, Printer } from "lucide-react";
-import { supabase } from "../../../lib/supabase";
+import { dbApi } from "../../../lib/apiClient";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { Badge } from "../../../components/ui/Badge";
 import { RetourButton } from "../../../components/ui/RetourButton";
 import { formatCurrency } from "../../../lib/utils";
-import { ProtectedAction } from "../../../components/auth/ProtectedAction"; // ✅ ADDED
+import { ProtectedAction } from "../../../components/auth/ProtectedAction"; // âœ… ADDED
 
 export default function MissionCACDetail() {
   const { id } = useParams();
@@ -21,19 +21,19 @@ export default function MissionCACDetail() {
   async function loadMission() {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("missions_cac")
-        .select("*, clients(name)")
-        .eq("id", id)
-        .single();
-      if (error) throw error;
-      setMission(data);
-
-      const { data: interData } = await supabase
-        .from("missions_cac_intervenants")
-        .select("*")
-        .eq("mission_id", id);
-      if (interData) setIntervenants(interData);
+      const [missionData, clientsData, interData] = await Promise.all([
+        dbApi.get("missions_cac", id as string),
+        dbApi.list("clients", { orderBy: "name", limit: 500 }),
+        dbApi.list("missions_cac_intervenants", {
+          filters: { mission_id: id as string },
+          limit: 500,
+        }),
+      ]);
+      const client = (clientsData || []).find(
+        (c: any) => c.id === (missionData as any).client_id,
+      );
+      setMission({ ...missionData, clients: { name: client?.name } });
+      if (interData) setIntervenants(interData as any);
     } catch (err) {
       console.error(err);
     } finally {
@@ -44,9 +44,9 @@ export default function MissionCACDetail() {
   function getStatutLabel(statut: string) {
     const labels: Record<string, string> = {
       brouillon: "Brouillon",
-      valide: "Validé",
-      facture_emise: "Facture émise",
-      facture_payee: "Payée",
+      valide: "ValidÃ©",
+      facture_emise: "Facture Ã©mise",
+      facture_payee: "PayÃ©e",
     };
     return labels[statut] || statut;
   }
@@ -54,7 +54,7 @@ export default function MissionCACDetail() {
   if (loading) return <div className="p-6 text-center">Chargement...</div>;
   if (!mission)
     return (
-      <div className="p-6 text-center text-red-500">Mission non trouvée</div>
+      <div className="p-6 text-center text-red-500">Mission non trouvÃ©e</div>
     );
 
   return (
@@ -62,11 +62,10 @@ export default function MissionCACDetail() {
       <RetourButton />
 
       <PageHeader
-        title={`Mission CAC – ${mission.clients?.name || "Client"}`}
+        title={`Mission CAC â€“ ${mission.clients?.name || "Client"}`}
         description={`Exercice ${mission.exercice}`}
         actions={
           <div className="flex gap-2">
-            {/* ✅ WRAPPED: Modifier (edit) */}
             <ProtectedAction module="missions" action="edit">
               <Link
                 to={`/missions/cac/${id}/edit`}
@@ -75,13 +74,11 @@ export default function MissionCACDetail() {
                 <Edit2 className="w-4 h-4" /> Modifier
               </Link>
             </ProtectedAction>
-            {/* ✅ WRAPPED: Facture (create in factures module) */}
             <ProtectedAction module="factures" action="create">
               <button className="btn-primary btn-md flex items-center gap-2">
                 <FileText className="w-4 h-4" /> Facture
               </button>
             </ProtectedAction>
-            {/* ✅ WRAPPED: PDF (view) */}
             <ProtectedAction module="missions" action="view">
               <button className="btn-ghost btn-md flex items-center gap-2">
                 <Printer className="w-4 h-4" /> PDF
@@ -95,7 +92,7 @@ export default function MissionCACDetail() {
         <div className="lg:col-span-2 space-y-6">
           <div className="card p-6">
             <h3 className="text-sm font-semibold text-gray-700 mb-4">
-              Récapitulatif
+              RÃ©capitulatif
             </h3>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div>
@@ -115,7 +112,7 @@ export default function MissionCACDetail() {
                 </div>
               </div>
               <div>
-                <div className="text-xs text-slate-500">Décote</div>
+                <div className="text-xs text-slate-500">DÃ©cote</div>
                 <div className="font-semibold">{mission.decote}%</div>
               </div>
               <div>
@@ -125,7 +122,7 @@ export default function MissionCACDetail() {
                 </Badge>
               </div>
               <div>
-                <div className="text-xs text-slate-500">Créée le</div>
+                <div className="text-xs text-slate-500">CrÃ©Ã©e le</div>
                 <div className="font-semibold">
                   {new Date(mission.created_at).toLocaleDateString("fr-FR")}
                 </div>
@@ -135,7 +132,7 @@ export default function MissionCACDetail() {
 
           <div className="card p-6">
             <h3 className="text-sm font-semibold text-gray-700 mb-4">
-              Détail des coûts
+              DÃ©tail des coÃ»ts
             </h3>
             <table className="w-full text-sm">
               <thead className="bg-slate-50">
@@ -151,7 +148,7 @@ export default function MissionCACDetail() {
                   <tr key={int.id} className="border-t border-slate-100">
                     <td className="px-3 py-2">
                       {int.grade === "associe_signataire" &&
-                        "Associé signataire"}
+                        "AssociÃ© signataire"}
                       {int.grade === "chef_mission" && "Chef de mission"}
                       {int.grade === "collaborateur_senior" &&
                         "Collaborateur senior"}
@@ -196,7 +193,7 @@ export default function MissionCACDetail() {
         <div className="space-y-6">
           <div className="card p-6 bg-blue-50 border-blue-200">
             <h3 className="text-sm font-semibold text-blue-800 mb-3">
-              Synthèse financière
+              SynthÃ¨se financiÃ¨re
             </h3>
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
@@ -218,7 +215,7 @@ export default function MissionCACDetail() {
                 </span>
               </div>
               <div className="flex justify-between text-green-700">
-                <span>Marge estimée</span>
+                <span>Marge estimÃ©e</span>
                 <span>
                   {formatCurrency(mission.marge_estimee || 0)}
                   {mission.total_budget > 0 && (

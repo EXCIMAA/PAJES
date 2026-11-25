@@ -1,6 +1,6 @@
 // src/pages/manuel/Manuel.tsx
 import React, { useEffect, useState, useRef } from "react";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import "./Manuel.css";
 import PlanningClient from "./PlanningClient";
 import SuiviEcheancesSociales from "./SuiviEcheancesSociales";
@@ -59,16 +59,16 @@ const Manuel: React.FC = () => {
     const fetchOutils = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase
-          .from("outils_manuel")
-          .select("*")
-          .order("id", { ascending: true });
+        const data = await dbApi.list<OutilManuel>("outils_manuel", {
+          orderBy: "id",
+          orderAsc: true,
+          limit: 500,
+        });
 
-        if (error) throw error;
         setOutils(data || []);
         if (data && data.length > 0) setSelectedId(data[0].id);
       } catch (err) {
-        console.error("Erreur Supabase:", err);
+        console.error("Erreur chargement manuel:", err);
         setError("Impossible de charger les données du manuel.");
       } finally {
         setLoading(false);
@@ -339,7 +339,7 @@ const Manuel: React.FC = () => {
           <div className="empty-state">
             <i className="fas fa-hand-pointer"></i>
             <h3>Aucun outil trouvé</h3>
-            <p>Vérifiez votre base de données Supabase.</p>
+            <p>Vérifiez votre base de données.</p>
           </div>
         )}
       </div>

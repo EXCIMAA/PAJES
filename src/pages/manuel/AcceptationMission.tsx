@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
-import { supabase } from "../../lib/supabase";
+import { dbApi } from "../../lib/apiClient";
 import * as XLSX from "xlsx";
+import { useNotification } from "../../contexts/NotificationContext";
 
 // ==================== STYLED COMPONENTS ====================
 
@@ -347,17 +348,17 @@ const AcceptationMission: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const { notify } = useNotification();
 
   // Chargement des clients
   useEffect(() => {
     const fetchClients = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase
-          .from("clients")
-          .select("id, client_code, name, status, niveau_risque")
-          .order("name");
-        if (error) throw error;
+        const data = await dbApi.list<Client>("clients", {
+          orderBy: "name",
+          limit: 500,
+        });
         setClients(data || []);
         if (data && data.length > 0) {
           setSelectedClientId(data[0].id);
@@ -381,26 +382,19 @@ const AcceptationMission: React.FC = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const { data: clientInfo, error: clientError } = await supabase
-          .from("clients")
-          .select("id, client_code, name, status, niveau_risque")
-          .eq("id", selectedClientId)
-          .single();
-        if (clientError) throw clientError;
+        const clientInfo = await dbApi.get<Client>("clients", selectedClientId);
         setClientData(clientInfo);
 
-        const { data: acceptation, error: acceptationError } = await supabase
-          .from("acceptation_mission")
-          .select("*")
-          .eq("client_id", selectedClientId)
-          .single();
+        const acceptation = await dbApi.list<AcceptationData>(
+          "acceptation_mission",
+          {
+            filters: { client_id: selectedClientId },
+            limit: 500,
+          },
+        );
 
-        if (acceptationError && acceptationError.code !== "PGRST116") {
-          throw acceptationError;
-        }
-
-        if (acceptation) {
-          setFormData(acceptation);
+        if (acceptation.length > 0) {
+          setFormData(acceptation[0]);
         } else {
           setFormData({
             client_id: selectedClientId,
@@ -465,28 +459,27 @@ const AcceptationMission: React.FC = () => {
         dataToSave.date_signature = null as any;
       }
 
-      const { data: existing } = await supabase
-        .from("acceptation_mission")
-        .select("id")
-        .eq("client_id", selectedClientId)
-        .single();
+      const existing = await dbApi.list<AcceptationData>(
+        "acceptation_mission",
+        {
+          filters: { client_id: selectedClientId },
+          limit: 500,
+        },
+      );
 
-      let result;
-      if (existing) {
-        result = await supabase
-          .from("acceptation_mission")
-          .update(dataToSave)
-          .eq("client_id", selectedClientId);
+      if (existing.length > 0) {
+        await dbApi.update(
+          "acceptation_mission",
+          existing[0].id as string,
+          dataToSave,
+        );
       } else {
-        result = await supabase
-          .from("acceptation_mission")
-          .insert([dataToSave]);
+        await dbApi.create("acceptation_mission", dataToSave);
       }
-      if (result.error) throw result.error;
-      alert("Formulaire d'acceptation sauvegardé !");
+      notify.success("Formulaire d'acceptation sauvegardé !");
     } catch (err: any) {
       console.error(err);
-      alert("Erreur : " + err.message);
+      notify.error("Erreur : " + err.message);
     } finally {
       setSaving(false);
     }
@@ -497,14 +490,12 @@ const AcceptationMission: React.FC = () => {
     if (!selectedClientId) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("acceptation_mission")
-        .select("*")
-        .eq("client_id", selectedClientId)
-        .single();
-      if (error && error.code !== "PGRST116") throw error;
-      if (data) {
-        setFormData(data);
+      const data = await dbApi.list<AcceptationData>("acceptation_mission", {
+        filters: { client_id: selectedClientId },
+        limit: 500,
+      });
+      if (data.length > 0) {
+        setFormData(data[0]);
       } else {
         setFormData({
           client_id: selectedClientId,
@@ -544,7 +535,7 @@ const AcceptationMission: React.FC = () => {
       }
     } catch (err: any) {
       console.error(err);
-      alert("Erreur annulation : " + err.message);
+      notify.error("Erreur annulation : " + err.message);
     } finally {
       setLoading(false);
     }

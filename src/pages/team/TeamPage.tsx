@@ -6,8 +6,8 @@ import { PageHeader } from "../../components/ui/PageHeader";
 import { Badge } from "../../components/ui/Badge";
 import { cn, getInitials } from "../../lib/utils";
 import { addNotification } from "../../lib/notifications";
-import { supabase } from "../../lib/supabase";
-import { useSupabaseQuery } from "../../hooks/useSupabaseData";
+import { useNotification, useConfirm } from "../../contexts/NotificationContext";
+import { dbApi } from "../../lib/apiClient";
 import { USER_ROLE_LABELS } from "../../lib/constants";
 import type { User } from "../../types";
 import {
@@ -29,11 +29,10 @@ type PermissionsMap = Record<string, RolePermissions>;
 
 export function TeamPage() {
   const { t } = useTranslation();
+  const { notify } = useNotification();
+  const confirm = useConfirm();
 
-  const { data: team } = useSupabaseQuery<User>({
-    table: "profiles",
-    orderBy: "full_name",
-  });
+  const [team, setTeam] = useState<User[]>([]);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [roleFilter, setRoleFilter] = useState<string>("all");
 
@@ -47,16 +46,11 @@ export function TeamPage() {
   const filteredTeam =
     roleFilter === "all" ? team : team.filter((u) => u.role === roleFilter);
 
-  // ============================================================
-  // Helper : construit la map de permissions depuis les données brutes
-  // ============================================================
   const buildPermissionsMap = (data: any[]): PermissionsMap => {
     const map: PermissionsMap = {};
-    // 1. Base : matrice du code (issu de l'Excel)
     POSTES.forEach((p) => {
       map[p] = getPermissionsForRole(p);
     });
-    // 2. Override : données de la base (sauf super_admin)
     (data || []).forEach((row: any) => {
       if (row.role === SUPER_ADMIN_ROLE) return;
       if (row.permissions && typeof row.permissions === "object") {
@@ -66,25 +60,15 @@ export function TeamPage() {
     return map;
   };
 
-  // ============================================================
-  // CHARGEMENT DES PERMISSIONS + AUTO-SEED
-  // ============================================================
   const fetchPermissions = async () => {
     setLoadingPerms(true);
     setError(null);
 
-    const { data, error: fetchError } = await supabase
-      .from("role_permissions")
-      .select("role, permissions");
+    const data = await dbApi.list<{ role: string; permissions: unknown }>(
+      "role_permissions",
+      { limit: 500 },
+    );
 
-    if (fetchError) {
-      setError("Erreur de chargement : " + fetchError.message);
-      alert("Erreur de chargement des permissions : " + fetchError.message);
-      setLoadingPerms(false);
-      return;
-    }
-
-    // ⭐ AUTO-SEED : si la table est vide, on insère TOUTE la matrice
     if (!data || data.length === 0) {
       console.log("[TeamPage] role_permissions vide → auto-seed en cours...");
 
@@ -95,32 +79,25 @@ export function TeamPage() {
         }),
       );
 
-      const { error: seedError } = await supabase
-        .from("role_permissions")
-        .upsert(seedRows, { onConflict: "role" });
-
-      if (seedError) {
-        console.error("[TeamPage] Auto-seed échoué :", seedError);
-        setError("Erreur auto-seed : " + seedError.message);
-      } else {
-        console.log(
-          `✅ [TeamPage] ${seedRows.length} postes auto-seedés en base.`,
-        );
-        setSeeded(true);
-        setTimeout(() => setSeeded(false), 5000);
+      for (const row of seedRows) {
+        await dbApi.create("role_permissions", row);
       }
 
-      // Recharger après seed
-      const { data: reloaded } = await supabase
-        .from("role_permissions")
-        .select("role, permissions");
+      console.log(
+        `✅ [TeamPage] ${seedRows.length} postes auto-seedés en base.`,
+      );
+      setSeeded(true);
+      setTimeout(() => setSeeded(false), 5000);
 
+      const reloaded = await dbApi.list<{ role: string; permissions: unknown }>(
+        "role_permissions",
+        { limit: 500 },
+      );
       setPermissions(buildPermissionsMap(reloaded || []));
       setLoadingPerms(false);
       return;
     }
 
-    // Cas normal : la table a déjà des données
     setPermissions(buildPermissionsMap(data));
     setLoadingPerms(false);
   };
@@ -129,9 +106,6 @@ export function TeamPage() {
     fetchPermissions();
   }, []);
 
-  // ============================================================
-  // SAUVEGARDE (avec avertissement au lieu de blocage)
-  // ============================================================
   const handleSavePermissions = async () => {
     setSaving(true);
     setSaved(false);
@@ -149,11 +123,16 @@ export function TeamPage() {
       }
 
       if (emptyPostes.length > 0) {
-        const confirmed = window.confirm(
-          `Les postes suivants n'ont AUCUNE permission :\n\n` +
+        const confirmed = await confirm({
+          title: "Postes sans permissions",
+          message:
+            "Les postes suivants n'ont AUCUNE permission :\n\n" +
             emptyPostes.map((l) => `• ${l}`).join("\n") +
-            `\n\nVoulez-vous continuer la sauvegarde quand même ?`,
-        );
+            "\n\nVoulez-vous continuer la sauvegarde quand même ?",
+          variant: "warning",
+          confirmLabel: "Continuer",
+          cancelLabel: "Annuler",
+        });
         if (!confirmed) {
           setSaving(false);
           return;
@@ -166,13 +145,10 @@ export function TeamPage() {
         .map(([role, perms]) => ({ role, permissions: perms }));
 
       for (const update of updates) {
-        const { error: upsertError } = await supabase
-          .from("role_permissions")
-          .upsert(
-            { role: update.role, permissions: update.permissions },
-            { onConflict: "role" },
-          );
-        if (upsertError) throw upsertError;
+        await dbApi.update("role_permissions", update.role, {
+          role: update.role,
+          permissions: update.permissions,
+        });
       }
 
       setSaved(true);
@@ -184,20 +160,22 @@ export function TeamPage() {
       setTimeout(() => setSaved(false), 3000);
     } catch (err: any) {
       setError(err.message);
-      alert("Erreur de sauvegarde : " + err.message);
+      notify.error("Erreur de sauvegarde : " + err.message);
     } finally {
       setSaving(false);
     }
   };
 
-  // ============================================================
-  // RESET : restaure la matrice depuis le code
-  // ============================================================
   const handleResetToDefaults = async () => {
-    const confirmed = window.confirm(
-      "Réinitialiser TOUTES les permissions aux valeurs par défaut (issues de l'Excel) ?\n\n" +
+    const confirmed = await confirm({
+      title: "Réinitialiser les permissions",
+      message:
+        "Réinitialiser TOUTES les permissions aux valeurs par défaut (issues de l'Excel) ?\n\n" +
         "⚠️ Toutes les modifications manuelles seront perdues.",
-    );
+      variant: "danger",
+      confirmLabel: "Réinitialiser",
+      cancelLabel: "Annuler",
+    });
     if (!confirmed) return;
 
     setSaving(true);
@@ -211,11 +189,9 @@ export function TeamPage() {
         }),
       );
 
-      const { error: seedError } = await supabase
-        .from("role_permissions")
-        .upsert(seedRows, { onConflict: "role" });
-
-      if (seedError) throw seedError;
+      for (const row of seedRows) {
+        await dbApi.update("role_permissions", row.role, row);
+      }
 
       await fetchPermissions();
       setSaved(true);
@@ -228,15 +204,12 @@ export function TeamPage() {
       setTimeout(() => setSaved(false), 3000);
     } catch (err: any) {
       setError(err.message);
-      alert("Erreur de réinitialisation : " + err.message);
+      notify.error("Erreur de réinitialisation : " + err.message);
     } finally {
       setSaving(false);
     }
   };
 
-  // ============================================================
-  // GESTION DES TOGGLES
-  // ============================================================
   const togglePermission = (
     role: string,
     moduleId: ModuleId,
@@ -288,9 +261,17 @@ export function TeamPage() {
     });
   };
 
-  // ============================================================
-  // RENDU
-  // ============================================================
+  useEffect(() => {
+    const fetchTeam = async () => {
+      const data = await dbApi.list<User>("profiles", {
+        orderBy: "full_name",
+        limit: 500,
+      });
+      setTeam(data);
+    };
+    fetchTeam();
+  }, []);
+
   return (
     <div className="page-container">
       <PageHeader
@@ -335,7 +316,6 @@ export function TeamPage() {
         </div>
       )}
 
-      {/* ---------- FILTRES ET LISTE DES UTILISATEURS ---------- */}
       <div className="flex items-center gap-3 mb-6">
         <div className="flex flex-wrap gap-2">
           <button
@@ -390,7 +370,6 @@ export function TeamPage() {
         </div>
       </div>
 
-      {/* Affichage des utilisateurs */}
       {view === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredTeam.map((member) => (
@@ -478,9 +457,6 @@ export function TeamPage() {
         </div>
       )}
 
-      {/* ============================================================
-          MATRICE DES PERMISSIONS
-          ============================================================ */}
       <div className="mt-10">
         <div className="flex items-center gap-2 mb-4">
           <Lock className="w-4 h-4 text-primary-400" />
@@ -610,7 +586,6 @@ export function TeamPage() {
                     );
                   })}
 
-                  {/* Ligne "Tous les postes" */}
                   <tr className="border-t border-slate-700/50 bg-slate-800/30">
                     <td className="px-4 py-3 sticky left-0 bg-slate-800/30 font-medium text-slate-400 text-xs z-10">
                       Tous les postes
