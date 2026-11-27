@@ -1,297 +1,8 @@
-// src/pages/manuel/AcceptationMission.tsx
-
 import React, { useEffect, useState } from "react";
-import styled from "styled-components";
 import { dbApi } from "../../lib/apiClient";
 import * as XLSX from "xlsx";
 import { useNotification } from "../../contexts/NotificationContext";
-
-// ==================== STYLED COMPONENTS ====================
-
-const Container = styled.div`
-  background: #0f172a;
-  border-radius: 16px;
-  padding: 24px 28px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-  border: 1px solid #1e293b;
-  color: #e2e8f0;
-`;
-
-const Header = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
-  padding-bottom: 12px;
-  border-bottom: 2px solid #1e293b;
-`;
-
-const Title = styled.h2`
-  font-size: 22px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  i {
-    color: #4facfe;
-  }
-`;
-
-const Subtitle = styled.div`
-  color: #94a3b8;
-  font-size: 14px;
-`;
-
-const Selectors = styled.div`
-  display: flex;
-  gap: 20px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-bottom: 20px;
-`;
-
-const StyledSelect = styled.select`
-  padding: 6px 12px;
-  border: 1px solid #334155;
-  border-radius: 6px;
-  background: #1e293b;
-  color: #e2e8f0;
-  font-size: 14px;
-  min-width: 200px;
-  &:focus {
-    outline: none;
-    border-color: #4facfe;
-  }
-  option {
-    background: #1e293b;
-    color: #e2e8f0;
-  }
-`;
-
-const Section = styled.div`
-  margin: 24px 0;
-  padding: 16px 20px;
-  background: #1e293b;
-  border-radius: 12px;
-  border-left: 3px solid #4facfe;
-`;
-
-const SectionTitle = styled.h3`
-  font-size: 16px;
-  font-weight: 600;
-  color: #4facfe;
-  margin: 0 0 12px 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-`;
-
-const Grid = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 80px 80px 1fr;
-  gap: 8px 12px;
-  align-items: center;
-  @media (max-width: 768px) {
-    grid-template-columns: 1fr 60px 60px 1fr;
-  }
-`;
-
-const GridLabel = styled.span`
-  color: #e2e8f0;
-  font-size: 14px;
-`;
-
-const Checkbox = styled.input`
-  width: 18px;
-  height: 18px;
-  accent-color: #4facfe;
-  cursor: pointer;
-  background: #1e293b;
-  border: 1px solid #334155;
-  &:checked {
-    accent-color: #4facfe;
-  }
-`;
-
-const RadioGroup = styled.div`
-  display: flex;
-  gap: 12px;
-  align-items: center;
-`;
-
-const RadioLabel = styled.label<{ checked: boolean }>`
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  font-weight: 600;
-  color: ${({ checked }) => (checked ? "#4facfe" : "#94a3b8")};
-  cursor: pointer;
-  input {
-    width: 16px;
-    height: 16px;
-    accent-color: #4facfe;
-    cursor: pointer;
-  }
-`;
-
-const TextArea = styled.textarea`
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #334155;
-  border-radius: 6px;
-  background: #0f172a;
-  color: #e2e8f0;
-  font-size: 14px;
-  font-family: inherit;
-  resize: vertical;
-  min-height: 60px;
-  &:focus {
-    outline: none;
-    border-color: #4facfe;
-  }
-`;
-
-const ButtonGroup = styled.div`
-  display: flex;
-  gap: 12px;
-  margin: 20px 0;
-  flex-wrap: wrap;
-`;
-
-const ActionButton = styled.button<{ variant?: "primary" | "secondary" }>`
-  padding: 8px 24px;
-  border: none;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background 0.2s;
-  ${({ variant }) => {
-    if (variant === "primary")
-      return "background: #4facfe; color: #fff; &:hover { background: #3b8edb; }";
-    if (variant === "secondary")
-      return "background: #334155; color: #e2e8f0; &:hover { background: #475569; }";
-    return "";
-  }}
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-`;
-
-const ExportButton = styled.button`
-  padding: 8px 18px;
-  background: #22c55e;
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  &:hover {
-    background: #16a34a;
-  }
-`;
-
-const DecisionGroup = styled.div`
-  display: flex;
-  gap: 24px;
-  flex-wrap: wrap;
-  margin: 12px 0;
-`;
-
-const DecisionLabel = styled.label<{ checked: boolean }>`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  color: ${({ checked }) => (checked ? "#4facfe" : "#94a3b8")};
-  cursor: pointer;
-  input {
-    width: 18px;
-    height: 18px;
-    accent-color: #4facfe;
-    cursor: pointer;
-  }
-`;
-
-const SignatureRow = styled.div`
-  display: flex;
-  gap: 24px;
-  flex-wrap: wrap;
-  margin: 12px 0;
-`;
-
-const SignatureInput = styled.input`
-  padding: 6px 12px;
-  border: 1px solid #334155;
-  border-radius: 6px;
-  background: #0f172a;
-  color: #e2e8f0;
-  font-size: 14px;
-  flex: 1;
-  min-width: 150px;
-  &:focus {
-    outline: none;
-    border-color: #4facfe;
-  }
-`;
-
-const LoadingContainer = styled.div`
-  text-align: center;
-  padding: 3rem;
-  color: #94a3b8;
-`;
-
-const Badge = styled.span<{ variant: "status" | "risk"; status?: string }>`
-  padding: 4px 16px;
-  border-radius: 30px;
-  font-size: 12px;
-  font-weight: 600;
-  ${({ variant, status }) => {
-    if (variant === "status") {
-      switch (status) {
-        case "Actif":
-          return "background: #dcfce7; color: #16a34a;";
-        case "Suspendu":
-          return "background: #fef3c7; color: #d97706;";
-        case "Résilié":
-          return "background: #fee2e2; color: #dc2626;";
-        default:
-          return "";
-      }
-    }
-    if (variant === "risk") {
-      switch (status) {
-        case "Faible":
-          return "background: #dbeafe; color: #2563eb;";
-        case "Moyen":
-          return "background: #fef3c7; color: #d97706;";
-        case "Élevé":
-          return "background: #fee2e2; color: #dc2626;";
-        default:
-          return "";
-      }
-    }
-    return "";
-  }}
-`;
-
-const ClientBadges = styled.div`
-  display: flex;
-  gap: 10px;
-  align-items: center;
-`;
-
-// ==================== INTERFACES ====================
+import { cn } from "../../lib/utils";
 
 interface Client {
   id: string;
@@ -338,8 +49,6 @@ interface AcceptationData {
   observations_generales: string;
 }
 
-// ==================== COMPOSANT ====================
-
 const AcceptationMission: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
@@ -350,7 +59,6 @@ const AcceptationMission: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const { notify } = useNotification();
 
-  // Chargement des clients
   useEffect(() => {
     const fetchClients = async () => {
       try {
@@ -375,7 +83,6 @@ const AcceptationMission: React.FC = () => {
     fetchClients();
   }, []);
 
-  // Chargement des données du client et du formulaire
   useEffect(() => {
     if (!selectedClientId) return;
 
@@ -442,14 +149,12 @@ const AcceptationMission: React.FC = () => {
     fetchData();
   }, [selectedClientId]);
 
-  // Mise à jour des champs
   const handleChange = (field: keyof AcceptationData, value: any) => {
     if (formData) {
       setFormData({ ...formData, [field]: value });
     }
   };
 
-  // Sauvegarde avec gestion de la date vide
   const saveForm = async () => {
     if (!formData || !selectedClientId) return;
     setSaving(true);
@@ -485,7 +190,6 @@ const AcceptationMission: React.FC = () => {
     }
   };
 
-  // Annulation (recharger depuis la base)
   const cancel = async () => {
     if (!selectedClientId) return;
     setLoading(true);
@@ -541,7 +245,6 @@ const AcceptationMission: React.FC = () => {
     }
   };
 
-  // Export Excel
   const exportExcel = () => {
     if (!formData || !clientData) return;
 
@@ -550,19 +253,11 @@ const AcceptationMission: React.FC = () => {
     rows.push([]);
     rows.push(["Client", clientData.name, "Code", clientData.client_code]);
     rows.push([]);
-
     rows.push(["1. PRISE DE CONNAISSANCE DU CLIENT"]);
-    rows.push([
-      "Le cabinet a-t-il rencontré le client ?",
-      formData.rencontre_client ? "Oui" : "Non",
-    ]);
-    rows.push([
-      "Une présentation a-t-elle été obtenue ?",
-      formData.presentation_obtenue ? "Oui" : "Non",
-    ]);
+    rows.push(["Le cabinet a-t-il rencontré le client ?", formData.rencontre_client ? "Oui" : "Non"]);
+    rows.push(["Une présentation a-t-elle été obtenue ?", formData.presentation_obtenue ? "Oui" : "Non"]);
     rows.push(["Observations", formData.observations_connaissance || ""]);
     rows.push([]);
-
     rows.push(["2. ANALYSE DES RISQUES"]);
     rows.push(["Activité", formData.risque_activite || ""]);
     rows.push(["Structure juridique", formData.risque_structure || ""]);
@@ -572,92 +267,39 @@ const AcceptationMission: React.FC = () => {
     rows.push(["Historique social", formData.risque_historique_social || ""]);
     rows.push(["Observations", formData.observations_risques || ""]);
     rows.push([]);
-
     rows.push(["3. ANALYSE DES BESOINS"]);
-    rows.push([
-      "Répartition des tâches définie ?",
-      formData.repartition_taches_define ? "Oui" : "Non",
-    ]);
-    rows.push([
-      "Volume d'écritures estimé ?",
-      formData.volume_ecritures_estime ? "Oui" : "Non",
-    ]);
-    rows.push([
-      "Spécificités identifiées ?",
-      formData.specificites_identifiees ? "Oui" : "Non",
-    ]);
-    rows.push([
-      "Délais identifiés ?",
-      formData.delais_identifies ? "Oui" : "Non",
-    ]);
+    rows.push(["Répartition des tâches définie ?", formData.repartition_taches_define ? "Oui" : "Non"]);
+    rows.push(["Volume d'écritures estimé ?", formData.volume_ecritures_estime ? "Oui" : "Non"]);
+    rows.push(["Spécificités identifiées ?", formData.specificites_identifiees ? "Oui" : "Non"]);
+    rows.push(["Délais identifiés ?", formData.delais_identifies ? "Oui" : "Non"]);
     rows.push(["Observations", formData.observations_besoins || ""]);
     rows.push([]);
-
     rows.push(["4. FAISABILITÉ"]);
-    rows.push([
-      "Cabinet indépendant ?",
-      formData.cabinet_independant ? "Oui" : "Non",
-    ]);
-    rows.push([
-      "Compétence technique ?",
-      formData.competence_technique ? "Oui" : "Non",
-    ]);
-    rows.push([
-      "Moyens suffisants ?",
-      formData.moyens_suffisants ? "Oui" : "Non",
-    ]);
+    rows.push(["Cabinet indépendant ?", formData.cabinet_independant ? "Oui" : "Non"]);
+    rows.push(["Compétence technique ?", formData.competence_technique ? "Oui" : "Non"]);
+    rows.push(["Moyens suffisants ?", formData.moyens_suffisants ? "Oui" : "Non"]);
     rows.push(["Observations", formData.observations_faisabilite || ""]);
     rows.push([]);
-
     rows.push(["5. CONFORMITÉ LBC/FT"]);
-    rows.push([
-      "Questionnaire vigilance complété ?",
-      formData.questionnaire_vigilance_complete ? "Oui" : "Non",
-    ]);
-    rows.push([
-      "Pièces d'identité vérifiées ?",
-      formData.pieces_identite_verifiees ? "Oui" : "Non",
-    ]);
-    rows.push([
-      "Origine des fonds comprise ?",
-      formData.origine_fonds_comprise ? "Oui" : "Non",
-    ]);
+    rows.push(["Questionnaire vigilance complété ?", formData.questionnaire_vigilance_complete ? "Oui" : "Non"]);
+    rows.push(["Pièces d'identité vérifiées ?", formData.pieces_identite_verifiees ? "Oui" : "Non"]);
+    rows.push(["Origine des fonds comprise ?", formData.origine_fonds_comprise ? "Oui" : "Non"]);
     rows.push(["Observations", formData.observations_lbc || ""]);
     rows.push([]);
-
     rows.push(["6. RELATION AVEC UN ANCIEN CABINET"]);
-    rows.push([
-      "Client suivi par un autre cabinet ?",
-      formData.client_suivi_autre_cabinet ? "Oui" : "Non",
-    ]);
-    rows.push([
-      "Information du confrère demandée ?",
-      formData.info_confrere_demandee ? "Oui" : "Non",
-    ]);
-    rows.push([
-      "Litige avec le précédent cabinet ?",
-      formData.litige_confrere ? "Oui" : "Non",
-    ]);
+    rows.push(["Client suivi par un autre cabinet ?", formData.client_suivi_autre_cabinet ? "Oui" : "Non"]);
+    rows.push(["Information du confrère demandée ?", formData.info_confrere_demandee ? "Oui" : "Non"]);
+    rows.push(["Litige avec le précédent cabinet ?", formData.litige_confrere ? "Oui" : "Non"]);
     rows.push(["Observations", formData.observations_ancien_cabinet || ""]);
     rows.push([]);
-
     rows.push(["7. DÉCISION"]);
-    rows.push([
-      "Type de client",
-      formData.type_client === "nouveau"
-        ? "Nouveau client"
-        : formData.type_client === "ancien"
-          ? "Ancien client"
-          : "",
-    ]);
+    rows.push(["Type de client", formData.type_client === "nouveau" ? "Nouveau client" : formData.type_client === "ancien" ? "Ancien client" : ""]);
     rows.push(["Décision", formData.decision || ""]);
     rows.push([]);
-
     rows.push(["SIGNATURE"]);
     rows.push(["Expert-comptable", formData.signature_expert || ""]);
     rows.push(["Date", formData.date_signature || ""]);
     rows.push([]);
-
     rows.push(["OBSERVATIONS GÉNÉRALES"]);
     rows.push([formData.observations_generales || ""]);
 
@@ -675,455 +317,227 @@ const AcceptationMission: React.FC = () => {
     URL.revokeObjectURL(link.href);
   };
 
-  // Rendu des cases à cocher
   const renderCheckbox = (field: keyof AcceptationData, label: string) => {
     if (!formData) return null;
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-        <Checkbox
+      <div className="flex items-center gap-2">
+        <input
           type="checkbox"
+          className="manuel-checkbox"
           checked={(formData[field] as boolean) || false}
           onChange={(e) => handleChange(field, e.target.checked)}
         />
-        <span style={{ fontSize: "14px", color: "#e2e8f0" }}>{label}</span>
+        {label && <span className="text-sm text-app-primary">{label}</span>}
       </div>
     );
   };
 
-  // Rendu des radios pour les risques
   const renderRiskRadio = (field: keyof AcceptationData) => {
     if (!formData) return null;
     const value = (formData[field] as string) || "";
     return (
-      <RadioGroup>
-        <RadioLabel checked={value === "E"}>
-          <input
-            type="radio"
-            checked={value === "E"}
-            onChange={() => handleChange(field, "E")}
-          />
-          E
-        </RadioLabel>
-        <RadioLabel checked={value === "M"}>
-          <input
-            type="radio"
-            checked={value === "M"}
-            onChange={() => handleChange(field, "M")}
-          />
-          M
-        </RadioLabel>
-        <RadioLabel checked={value === "F"}>
-          <input
-            type="radio"
-            checked={value === "F"}
-            onChange={() => handleChange(field, "F")}
-          />
-          F
-        </RadioLabel>
-      </RadioGroup>
+      <div className="manuel-radio-group">
+        {(["E", "M", "F"] as const).map((opt) => (
+          <label key={opt} className={cn("manuel-radio-label", value === opt && "checked")}>
+            <input type="radio" checked={value === opt} onChange={() => handleChange(field, opt)} />
+            {opt}
+          </label>
+        ))}
+      </div>
     );
   };
 
   if (loading && clients.length === 0) {
-    return (
-      <LoadingContainer>
-        <i className="fas fa-spinner fa-spin" style={{ fontSize: "2rem" }}></i>
-        <p>Chargement...</p>
-      </LoadingContainer>
-    );
+    return <div className="manuel-loading"><p>Chargement...</p></div>;
   }
 
   if (error) {
-    return (
-      <Container>
-        <p style={{ color: "#dc2626" }}>Erreur : {error}</p>
-      </Container>
-    );
+    return <div className="manuel-page"><p className="text-error-600 dark:text-error-400">Erreur : {error}</p></div>;
   }
 
   if (!formData || !clientData) {
-    return (
-      <Container>
-        <p>Sélectionnez un client pour commencer.</p>
-      </Container>
-    );
+    return <div className="manuel-page"><p className="text-app-secondary">Sélectionnez un client pour commencer.</p></div>;
   }
 
+  const sections = [
+    { title: "1. PRISE DE CONNAISSANCE DU CLIENT", fields: [
+      { label: "Le cabinet a-t-il rencontré le client et compris son activité ?", field: "rencontre_client" as const },
+      { label: "Une présentation de l'entreprise a-t-elle été obtenue ?", field: "presentation_obtenue" as const },
+    ], obs: "observations_connaissance" as const },
+    { title: "2. ANALYSE DES RISQUES CLIENT", fields: [
+      { label: "Activité (secteur, complexité, informel)", field: "risque_activite" as const, radio: true },
+      { label: "Structure juridique et gouvernance", field: "risque_structure" as const, radio: true },
+      { label: "Fiabilité du SI comptable", field: "risque_si_comptable" as const, radio: true },
+      { label: "Organisation comptable interne", field: "risque_org_comptable" as const, radio: true },
+      { label: "Historique fiscal (DGI)", field: "risque_historique_fiscal" as const, radio: true },
+      { label: "Historique social (CNPS)", field: "risque_historique_social" as const, radio: true },
+    ], obs: "observations_risques" as const },
+    { title: "3. ANALYSE DES BESOINS DU CLIENT", fields: [
+      { label: "Répartition des tâches définie ?", field: "repartition_taches_define" as const },
+      { label: "Volume d'écritures estimé ?", field: "volume_ecritures_estime" as const },
+      { label: "Spécificités fiscales/comptables (OHADA) identifiées ?", field: "specificites_identifiees" as const },
+      { label: "Délais spécifiques identifiés ?", field: "delais_identifies" as const },
+    ], obs: "observations_besoins" as const },
+    { title: "4. FAISABILITÉ DE LA MISSION", fields: [
+      { label: "Le cabinet est-il indépendant du client ?", field: "cabinet_independant" as const },
+      { label: "Le cabinet a-t-il la compétence technique nécessaire ?", field: "competence_technique" as const },
+      { label: "Les moyens humains et matériels sont-ils suffisants ?", field: "moyens_suffisants" as const },
+    ], obs: "observations_faisabilite" as const },
+    { title: "5. CONFORMITÉ – LBC / FT", fields: [
+      { label: "Questionnaire de vigilance client complété ?", field: "questionnaire_vigilance_complete" as const },
+      { label: "Pièces d'identité du dirigeant vérifiées ?", field: "pieces_identite_verifiees" as const },
+      { label: "Origine de l'activité et des fonds comprise ?", field: "origine_fonds_comprise" as const },
+    ], obs: "observations_lbc" as const },
+    { title: "6. RELATION AVEC UN ANCIEN CABINET", fields: [
+      { label: "Le client est-il suivi par un autre expert-comptable ?", field: "client_suivi_autre_cabinet" as const },
+      { label: "Si oui : information du confrère demandée ?", field: "info_confrere_demandee" as const },
+      { label: "Y a-t-il opposition ou litige avec le précédent cabinet ?", field: "litige_confrere" as const },
+    ], obs: "observations_ancien_cabinet" as const },
+  ];
+
   return (
-    <Container>
-      <Selectors>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ color: "#94a3b8", fontWeight: 600 }}>Client :</span>
-          <StyledSelect
+    <div className="manuel-page">
+      <div className="manuel-selectors">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-app-secondary">Client :</span>
+          <select
+            className="manuel-select"
             value={selectedClientId ?? ""}
             onChange={(e) => setSelectedClientId(e.target.value)}
           >
             {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({c.client_code})
-              </option>
+              <option key={c.id} value={c.id}>{c.name} ({c.client_code})</option>
             ))}
-          </StyledSelect>
+          </select>
         </div>
-        <ExportButton onClick={exportExcel}>
+        <button className="manuel-btn-export" onClick={exportExcel}>
           <i className="fas fa-file-excel"></i> Exporter Excel
-        </ExportButton>
-      </Selectors>
+        </button>
+      </div>
 
-      <Header>
-        <Title>
-          <i className="fas fa-file-signature"></i> Acceptation et maintien de
-          mission
-        </Title>
-        <ClientBadges>
-          <Badge variant="status" status={clientData.status}>
-            {clientData.status || "Actif"}
-          </Badge>
+      <div className="manuel-header">
+        <h2 className="manuel-title"><i className="fas fa-file-signature"></i> Acceptation et maintien de mission</h2>
+        <div className="flex gap-2.5 items-center">
+          <span className="badge badge-success">{clientData.status || "Actif"}</span>
           {clientData.niveau_risque && (
-            <Badge variant="risk" status={clientData.niveau_risque}>
+            <span className={cn("badge", clientData.niveau_risque === "Faible" ? "badge-primary" : clientData.niveau_risque === "Moyen" ? "badge-warning" : "badge-error")}>
               Risque {clientData.niveau_risque}
-            </Badge>
+            </span>
           )}
-        </ClientBadges>
-      </Header>
-
-      <Subtitle style={{ marginBottom: "16px" }}>
-        <strong>{clientData.name}</strong> · {clientData.client_code}
-      </Subtitle>
-
-      {/* Sections du formulaire (inchangées) */}
-      {/* 1. PRISE DE CONNAISSANCE */}
-      <Section>
-        <SectionTitle>🔹 1. PRISE DE CONNAISSANCE DU CLIENT</SectionTitle>
-        <Grid>
-          <GridLabel>
-            Le cabinet a-t-il rencontré le client et compris son activité ?
-          </GridLabel>
-          <div>{renderCheckbox("rencontre_client", "")}</div>
-          <div></div>
-          <div></div>
-          <GridLabel>
-            Une présentation de l'entreprise a-t-elle été obtenue ?
-          </GridLabel>
-          <div>{renderCheckbox("presentation_obtenue", "")}</div>
-          <div></div>
-          <div></div>
-        </Grid>
-        <div style={{ marginTop: "8px" }}>
-          <TextArea
-            placeholder="Observations…"
-            value={formData.observations_connaissance || ""}
-            onChange={(e) =>
-              handleChange("observations_connaissance", e.target.value)
-            }
-          />
         </div>
-      </Section>
+      </div>
 
-      {/* 2. ANALYSE DES RISQUES */}
-      <Section>
-        <SectionTitle>🔹 2. ANALYSE DES RISQUES CLIENT</SectionTitle>
-        <Grid>
-          <GridLabel>Activité (secteur, complexité, informel)</GridLabel>
-          <div>{renderRiskRadio("risque_activite")}</div>
-          <div></div>
-          <div></div>
-          <GridLabel>Structure juridique et gouvernance</GridLabel>
-          <div>{renderRiskRadio("risque_structure")}</div>
-          <div></div>
-          <div></div>
-          <GridLabel>Fiabilité du système d'information comptable</GridLabel>
-          <div>{renderRiskRadio("risque_si_comptable")}</div>
-          <div></div>
-          <div></div>
-          <GridLabel>Organisation comptable interne</GridLabel>
-          <div>{renderRiskRadio("risque_org_comptable")}</div>
-          <div></div>
-          <div></div>
-          <GridLabel>
-            Historique fiscal (DGI : redressements, contrôles)
-          </GridLabel>
-          <div>{renderRiskRadio("risque_historique_fiscal")}</div>
-          <div></div>
-          <div></div>
-          <GridLabel>Historique social (CNPS : contentieux, retard)</GridLabel>
-          <div>{renderRiskRadio("risque_historique_social")}</div>
-          <div></div>
-          <div></div>
-        </Grid>
-        <div style={{ marginTop: "8px" }}>
-          <TextArea
-            placeholder="Observations…"
-            value={formData.observations_risques || ""}
-            onChange={(e) =>
-              handleChange("observations_risques", e.target.value)
-            }
-          />
-        </div>
-      </Section>
+      <div className="manuel-subtitle mb-4">
+        <strong className="text-app-primary">{clientData.name}</strong> · {clientData.client_code}
+      </div>
 
-      {/* 3. ANALYSE DES BESOINS */}
-      <Section>
-        <SectionTitle>🔹 3. ANALYSE DES BESOINS DU CLIENT</SectionTitle>
-        <Grid>
-          <GridLabel>
-            Répartition des tâches entre client et cabinet définie ?
-          </GridLabel>
-          <div>{renderCheckbox("repartition_taches_define", "")}</div>
-          <div></div>
-          <div></div>
-          <GridLabel>Volume d'écritures comptables estimé ?</GridLabel>
-          <div>{renderCheckbox("volume_ecritures_estime", "")}</div>
-          <div></div>
-          <div></div>
-          <GridLabel>
-            Spécificités fiscales / comptables (OHADA) identifiées ?
-          </GridLabel>
-          <div>{renderCheckbox("specificites_identifiees", "")}</div>
-          <div></div>
-          <div></div>
-          <GridLabel>Délais spécifiques du client identifiés ?</GridLabel>
-          <div>{renderCheckbox("delais_identifies", "")}</div>
-          <div></div>
-          <div></div>
-        </Grid>
-        <div style={{ marginTop: "8px" }}>
-          <TextArea
-            placeholder="Observations…"
-            value={formData.observations_besoins || ""}
-            onChange={(e) =>
-              handleChange("observations_besoins", e.target.value)
-            }
-          />
+      {sections.map((section) => (
+        <div key={section.title} className="manuel-section">
+          <h3 className="manuel-section-title">🔹 {section.title}</h3>
+          <div className="manuel-grid">
+            {section.fields.map((f) => (
+              <React.Fragment key={f.field}>
+                <span className="manuel-grid-label">{f.label}</span>
+                <div>{f.radio ? renderRiskRadio(f.field) : renderCheckbox(f.field, "")}</div>
+                <div></div>
+                <div></div>
+              </React.Fragment>
+            ))}
+          </div>
+          <div className="mt-2">
+            <textarea
+              className="manuel-textarea"
+              placeholder="Observations…"
+              value={(formData as any)[section.obs] || ""}
+              onChange={(e) => handleChange(section.obs, e.target.value)}
+            />
+          </div>
         </div>
-      </Section>
+      ))}
 
-      {/* 4. FAISABILITÉ */}
-      <Section>
-        <SectionTitle>🔹 4. FAISABILITÉ DE LA MISSION</SectionTitle>
-        <Grid>
-          <GridLabel>Le cabinet est-il indépendant du client ?</GridLabel>
-          <div>{renderCheckbox("cabinet_independant", "")}</div>
-          <div></div>
-          <div></div>
-          <GridLabel>
-            Le cabinet a-t-il la compétence technique nécessaire ?
-          </GridLabel>
-          <div>{renderCheckbox("competence_technique", "")}</div>
-          <div></div>
-          <div></div>
-          <GridLabel>
-            Les moyens humains et matériels sont-ils suffisants ?
-          </GridLabel>
-          <div>{renderCheckbox("moyens_suffisants", "")}</div>
-          <div></div>
-          <div></div>
-        </Grid>
-        <div style={{ marginTop: "8px" }}>
-          <TextArea
-            placeholder="Observations…"
-            value={formData.observations_faisabilite || ""}
-            onChange={(e) =>
-              handleChange("observations_faisabilite", e.target.value)
-            }
-          />
+      <div className="manuel-section">
+        <h3 className="manuel-section-title">🔹 7. DÉCISION D'ACCEPTATION</h3>
+        <div className="mb-3">
+          <span className="text-sm text-app-secondary font-medium">Type de client :</span>
+          <div className="manuel-decision-group">
+            {[
+              { val: "nouveau", label: "Nouveau client" },
+              { val: "ancien", label: "Ancien client" },
+            ].map((opt) => (
+              <label key={opt.val} className={cn("manuel-decision-label", formData.type_client === opt.val && "checked")}>
+                <input type="radio" checked={formData.type_client === opt.val} onChange={() => handleChange("type_client", opt.val)} />
+                {opt.label}
+              </label>
+            ))}
+          </div>
         </div>
-      </Section>
+        <div>
+          <span className="text-sm text-app-secondary font-medium">Décision :</span>
+          <div className="manuel-decision-group">
+            {[
+              { val: "accepter", label: "J'accepte la mission comptable", enable: "nouveau" },
+              { val: "refuser", label: "Je refuse la mission comptable", enable: "nouveau" },
+              { val: "maintenir", label: "Je maintiens la mission", enable: "ancien" },
+              { val: "ne_pas_maintenir", label: "Je ne maintiens pas la mission", enable: "ancien" },
+            ].map((opt) => (
+              <label key={opt.val} className={cn("manuel-decision-label", formData.decision === opt.val && "checked")}>
+                <input
+                  type="radio"
+                  checked={formData.decision === opt.val}
+                  onChange={() => handleChange("decision", opt.val)}
+                  disabled={formData.type_client !== opt.enable}
+                />
+                {opt.label}
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
 
-      {/* 5. LBC / FT */}
-      <Section>
-        <SectionTitle>🔹 5. CONFORMITÉ – LBC / FT</SectionTitle>
-        <Grid>
-          <GridLabel>Questionnaire de vigilance client complété ?</GridLabel>
-          <div>{renderCheckbox("questionnaire_vigilance_complete", "")}</div>
-          <div></div>
-          <div></div>
-          <GridLabel>Pièces d'identité du dirigeant vérifiées ?</GridLabel>
-          <div>{renderCheckbox("pieces_identite_verifiees", "")}</div>
-          <div></div>
-          <div></div>
-          <GridLabel>Origine de l'activité et des fonds comprise ?</GridLabel>
-          <div>{renderCheckbox("origine_fonds_comprise", "")}</div>
-          <div></div>
-          <div></div>
-        </Grid>
-        <div style={{ marginTop: "8px" }}>
-          <TextArea
-            placeholder="Observations…"
-            value={formData.observations_lbc || ""}
-            onChange={(e) => handleChange("observations_lbc", e.target.value)}
-          />
-        </div>
-      </Section>
-
-      {/* 6. RELATION ANCIEN CABINET */}
-      <Section>
-        <SectionTitle>🔹 6. RELATION AVEC UN ANCIEN CABINET</SectionTitle>
-        <Grid>
-          <GridLabel>
-            Le client est-il suivi par un autre expert-comptable ?
-          </GridLabel>
-          <div>{renderCheckbox("client_suivi_autre_cabinet", "")}</div>
-          <div></div>
-          <div></div>
-          <GridLabel>Si oui : information du confrère demandée ?</GridLabel>
-          <div>{renderCheckbox("info_confrere_demandee", "")}</div>
-          <div></div>
-          <div></div>
-          <GridLabel>
-            Y a-t-il opposition ou litige avec le précédent cabinet ?
-          </GridLabel>
-          <div>{renderCheckbox("litige_confrere", "")}</div>
-          <div></div>
-          <div></div>
-        </Grid>
-        <div style={{ marginTop: "8px" }}>
-          <TextArea
-            placeholder="Observations…"
-            value={formData.observations_ancien_cabinet || ""}
-            onChange={(e) =>
-              handleChange("observations_ancien_cabinet", e.target.value)
-            }
-          />
-        </div>
-      </Section>
-
-      {/* 7. DÉCISION */}
-      <Section>
-        <SectionTitle>🔹 7. DÉCISION D'ACCEPTATION DE MISSION</SectionTitle>
-        <div style={{ marginBottom: "12px" }}>
-          <span style={{ color: "#94a3b8", fontSize: "14px", fontWeight: 500 }}>
-            Type de client :
-          </span>
-          <DecisionGroup>
-            <DecisionLabel checked={formData.type_client === "nouveau"}>
-              <input
-                type="radio"
-                checked={formData.type_client === "nouveau"}
-                onChange={() => handleChange("type_client", "nouveau")}
-              />
-              🆕 Nouveau client
-            </DecisionLabel>
-            <DecisionLabel checked={formData.type_client === "ancien"}>
-              <input
-                type="radio"
-                checked={formData.type_client === "ancien"}
-                onChange={() => handleChange("type_client", "ancien")}
-              />
-              🔄 Ancien client
-            </DecisionLabel>
-          </DecisionGroup>
-        </div>
-        <div style={{ marginBottom: "8px" }}>
-          <span style={{ color: "#94a3b8", fontSize: "14px", fontWeight: 500 }}>
-            Décision :
-          </span>
-          <DecisionGroup>
-            <DecisionLabel checked={formData.decision === "accepter"}>
-              <input
-                type="radio"
-                checked={formData.decision === "accepter"}
-                onChange={() => handleChange("decision", "accepter")}
-                disabled={formData.type_client !== "nouveau"}
-              />
-              ✅ J'accepte la mission comptable
-            </DecisionLabel>
-            <DecisionLabel checked={formData.decision === "refuser"}>
-              <input
-                type="radio"
-                checked={formData.decision === "refuser"}
-                onChange={() => handleChange("decision", "refuser")}
-                disabled={formData.type_client !== "nouveau"}
-              />
-              ❌ Je refuse la mission comptable
-            </DecisionLabel>
-            <DecisionLabel checked={formData.decision === "maintenir"}>
-              <input
-                type="radio"
-                checked={formData.decision === "maintenir"}
-                onChange={() => handleChange("decision", "maintenir")}
-                disabled={formData.type_client !== "ancien"}
-              />
-              ✅ Je maintiens la mission
-            </DecisionLabel>
-            <DecisionLabel checked={formData.decision === "ne_pas_maintenir"}>
-              <input
-                type="radio"
-                checked={formData.decision === "ne_pas_maintenir"}
-                onChange={() => handleChange("decision", "ne_pas_maintenir")}
-                disabled={formData.type_client !== "ancien"}
-              />
-              ❌ Je ne maintiens pas la mission
-            </DecisionLabel>
-          </DecisionGroup>
-        </div>
-      </Section>
-
-      {/* Signature */}
-      <Section style={{ borderLeftColor: "#22c55e" }}>
-        <SectionTitle style={{ color: "#22c55e" }}>✍️ SIGNATURE</SectionTitle>
-        <SignatureRow>
-          <div style={{ flex: 1 }}>
-            <label
-              style={{
-                color: "#94a3b8",
-                fontSize: "12px",
-                textTransform: "uppercase",
-                display: "block",
-                marginBottom: "4px",
-              }}
-            >
-              Expert-comptable
-            </label>
-            <SignatureInput
+      <div className="manuel-section" style={{ borderLeftColor: "#22c55e" }}>
+        <h3 className="manuel-section-title" style={{ color: "#22c55e" }}>✍️ SIGNATURE</h3>
+        <div className="manuel-signature-row">
+          <div className="flex-1">
+            <label className="manuel-field-label">Expert-comptable</label>
+            <input
+              className="manuel-signature-input"
               placeholder="Nom et signature"
               value={formData.signature_expert || ""}
               onChange={(e) => handleChange("signature_expert", e.target.value)}
             />
           </div>
-          <div style={{ flex: 1 }}>
-            <label
-              style={{
-                color: "#94a3b8",
-                fontSize: "12px",
-                textTransform: "uppercase",
-                display: "block",
-                marginBottom: "4px",
-              }}
-            >
-              Date
-            </label>
-            <SignatureInput
+          <div className="flex-1">
+            <label className="manuel-field-label">Date</label>
+            <input
+              className="manuel-signature-input"
               type="date"
               value={formData.date_signature || ""}
               onChange={(e) => handleChange("date_signature", e.target.value)}
             />
           </div>
-        </SignatureRow>
-      </Section>
+        </div>
+      </div>
 
-      {/* Observations générales */}
-      <Section>
-        <SectionTitle>📝 OBSERVATIONS GÉNÉRALES</SectionTitle>
-        <TextArea
+      <div className="manuel-section">
+        <h3 className="manuel-section-title">📝 OBSERVATIONS GÉNÉRALES</h3>
+        <textarea
+          className="manuel-textarea"
           placeholder="Observations générales…"
           value={formData.observations_generales || ""}
-          onChange={(e) =>
-            handleChange("observations_generales", e.target.value)
-          }
+          onChange={(e) => handleChange("observations_generales", e.target.value)}
           style={{ minHeight: "80px" }}
         />
-      </Section>
+      </div>
 
-      <ButtonGroup>
-        <ActionButton variant="primary" onClick={saveForm} disabled={saving}>
+      <div className="manuel-button-group">
+        <button className="manuel-btn manuel-btn-primary" onClick={saveForm} disabled={saving}>
           {saving ? "Sauvegarde..." : "ENREGISTRER"}
-        </ActionButton>
-        <ActionButton variant="secondary" onClick={cancel} disabled={saving}>
+        </button>
+        <button className="manuel-btn manuel-btn-secondary" onClick={cancel} disabled={saving}>
           ANNULER
-        </ActionButton>
-      </ButtonGroup>
-    </Container>
+        </button>
+      </div>
+    </div>
   );
 };
 

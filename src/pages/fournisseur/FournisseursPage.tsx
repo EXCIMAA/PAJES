@@ -1,6 +1,4 @@
-// src/pages/Fournisseurs/FournisseursPage.tsx
 import React, { useEffect, useState } from "react";
-import styled from "styled-components";
 import { addNotification } from "../../lib/notifications";
 import { suppliersApi, type Supplier } from "../../api/suppliers";
 import { useNotification, useConfirm } from "../../contexts/NotificationContext";
@@ -26,276 +24,10 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { ProtectedAction } from "../../components/auth/ProtectedAction"; // ✅ ADDED
+import { ProtectedAction } from "../../components/auth/ProtectedAction";
+import { PageHeader } from "../../components/ui/PageHeader";
+import { cn } from "../../lib/utils";
 
-// ========== STYLES ==========
-const Container = styled.div`
-  padding: 24px;
-  color: #e2e8f0;
-  max-width: 1400px;
-  margin: 0 auto;
-`;
-
-const Header = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 28px;
-  h1 {
-    font-size: 2rem;
-    font-weight: 700;
-    color: #e2e8f0;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    svg {
-      color: #4facfe;
-    }
-  }
-`;
-
-const StatsGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
-  margin-bottom: 28px;
-`;
-
-const StatCard = styled.div<{ color?: string }>`
-  background: #1e293b;
-  border-radius: 12px;
-  padding: 20px;
-  border-left: 4px solid ${({ color }) => color || "#4facfe"};
-  .stat-value {
-    font-size: 24px;
-    font-weight: 700;
-    color: #e2e8f0;
-    margin-bottom: 4px;
-  }
-  .stat-label {
-    font-size: 11px;
-    color: #94a3b8;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .stat-sub {
-    font-size: 12px;
-    color: #94a3b8;
-    margin-top: 4px;
-  }
-`;
-
-const ChartContainer = styled.div`
-  background: #1e293b;
-  border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 28px;
-  border: 1px solid #334155;
-  .chart-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-    h3 {
-      color: #94a3b8;
-      font-size: 16px;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: #4facfe;
-    }
-  }
-`;
-
-const Button = styled.button<{
-  variant?: "primary" | "secondary" | "danger" | "success";
-}>`
-  padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  ${({ variant }) => {
-    switch (variant) {
-      case "primary":
-        return "background: #1e3a5f; color: #fff; &:hover { background: #2a4f7f; }";
-      case "secondary":
-        return "background: #334155; color: #e2e8f0; &:hover { background: #475569; }";
-      case "danger":
-        return "background: #dc2626; color: #fff; &:hover { background: #b91c1c; }";
-      case "success":
-        return "background: #10b981; color: #fff; &:hover { background: #059669; }";
-      default:
-        return "background: #1e293b; color: #e2e8f0; &:hover { background: #334155; }";
-    }
-  }}
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-`;
-
-const TableWrapper = styled.div`
-  overflow-x: auto;
-  background: #1e293b;
-  border-radius: 12px;
-  padding: 16px;
-`;
-
-const StyledTable = styled.table`
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-  th,
-  td {
-    padding: 10px 12px;
-    border-bottom: 1px solid #2d3748;
-    text-align: left;
-    vertical-align: middle;
-  }
-  th {
-    color: #94a3b8;
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 10px;
-    letter-spacing: 0.5px;
-    border-bottom: 2px solid #334155;
-    background: #0f172a;
-  }
-  td {
-    color: #e2e8f0;
-  }
-`;
-
-const StatusBadge = styled.span<{ active: boolean }>`
-  display: inline-block;
-  padding: 3px 12px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 600;
-  ${({ active }) =>
-    active
-      ? "background: #7f1d1d; color: #fca5a5;"
-      : "background: #14532d; color: #86efac;"}
-`;
-
-const ModalOverlay = styled.div`
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 16px;
-`;
-
-const Modal = styled.div`
-  background: #1e293b;
-  border-radius: 12px;
-  padding: 24px;
-  max-width: 500px;
-  width: 100%;
-  border: 1px solid #334155;
-  .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-    h2 {
-      color: #e2e8f0;
-      font-size: 18px;
-    }
-  }
-`;
-
-const Field = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 12px;
-  label {
-    font-size: 12px;
-    color: #94a3b8;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-weight: 600;
-  }
-  input,
-  textarea {
-    padding: 8px 12px;
-    border: 1px solid #334155;
-    border-radius: 6px;
-    background: #0f172a;
-    color: #e2e8f0;
-    font-size: 13px;
-    &:focus {
-      outline: none;
-      border-color: #4facfe;
-    }
-  }
-  textarea {
-    resize: vertical;
-    min-height: 60px;
-  }
-  .checkbox-group {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    label {
-      font-size: 13px;
-      color: #e2e8f0;
-      text-transform: none;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      cursor: pointer;
-    }
-    input[type="checkbox"] {
-      width: 18px;
-      height: 18px;
-      accent-color: #4facfe;
-    }
-  }
-`;
-
-const EmptyState = styled.div`
-  text-align: center;
-  padding: 40px 20px;
-  color: #94a3b8;
-  svg {
-    margin-bottom: 12px;
-    opacity: 0.5;
-  }
-  p {
-    font-size: 14px;
-  }
-`;
-
-const ActionGroup = styled.div`
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-`;
-
-const RecurringBadge = styled.span`
-  display: inline-block;
-  background: #1e3a5f;
-  color: #4facfe;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 600;
-  margin-left: 6px;
-`;
-
-// ========== COMPOSANT PRINCIPAL ==========
 export const FournisseursPage: React.FC = () => {
   const [fournisseurs, setFournisseurs] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
@@ -314,14 +46,12 @@ export const FournisseursPage: React.FC = () => {
   const { notify } = useNotification();
   const confirm = useConfirm();
 
-  // Charger les données
   const loadFournisseurs = async () => {
     try {
       setLoading(true);
       const data = await suppliersApi.list();
       setFournisseurs(data);
       setError(null);
-      // Vérifier les alertes
       await checkAlerts(data);
     } catch (err) {
       console.error(err);
@@ -331,21 +61,18 @@ export const FournisseursPage: React.FC = () => {
     }
   };
 
-  // ========== ALERTE PERSISTANTE (chaque jour jusqu'à résolution) ==========
   const checkAlerts = async (items: Supplier[]) => {
     const today = new Date();
     const todayStr = today.toISOString().split("T")[0];
 
     for (const f of items) {
-      // Ignorer si déjà marqué terminé
       if (f.is_done) continue;
 
       let shouldAlert = false;
-      let targetDate = null;
+      let targetDate: Date | null = null;
       let diff = 0;
 
       if (f.is_recurring && f.recurring_day) {
-        // Alerte récurrente mensuelle
         const daysInMonth = new Date(
           today.getFullYear(),
           today.getMonth() + 1,
@@ -360,18 +87,14 @@ export const FournisseursPage: React.FC = () => {
         diff = differenceInDays(alertDate, today);
         targetDate = alertDate;
 
-        // On notifie si aujourd'hui est le jour J ou après (diff <= 0)
-        // ET qu'on n'a pas déjà notifié aujourd'hui
         if (diff <= 0 && f.last_alert_date !== todayStr) {
           shouldAlert = true;
         }
       } else if (f.alert_date) {
-        // Alerte ponctuelle
         const alertDate = new Date(f.alert_date);
         diff = differenceInDays(alertDate, today);
         targetDate = alertDate;
 
-        // On notifie si aujourd'hui est le jour J ou après (diff <= 0)
         if (diff <= 0 && f.last_alert_date !== todayStr) {
           shouldAlert = true;
         }
@@ -379,17 +102,14 @@ export const FournisseursPage: React.FC = () => {
 
       if (shouldAlert && targetDate) {
         const diffDisplay = diff <= 0 ? "dépassée" : `dans ${diff} jour(s)`;
-        // 🔔 Envoyer la notification système (toast)
-        // ✅ FIX: removed `duration` — not part of NotificationPayload
         void addNotification({
-          title: `⚠️ Alerte fournisseur : ${f.name}`,
+          title: `Alerte fournisseur : ${f.name}`,
           message:
             f.message ||
             `Échéance ${diffDisplay} (${format(targetDate, "dd/MM/yyyy")})`,
           type: "warning",
         });
 
-        // Mettre à jour last_alert_date pour éviter les doublons du même jour
         await suppliersApi.patch(f.id, { last_alert_date: todayStr });
       }
     }
@@ -397,12 +117,10 @@ export const FournisseursPage: React.FC = () => {
 
   useEffect(() => {
     loadFournisseurs();
-    // Vérifier les alertes toutes les 60 secondes (optionnel)
     const interval = setInterval(() => void loadFournisseurs(), 60000);
     return () => clearInterval(interval);
   }, []);
 
-  // Statistiques
   const totalFournisseurs = fournisseurs.length;
   const alertesActives = fournisseurs.filter((f) => !f.is_done).length;
   const totalDepenses = fournisseurs.reduce(
@@ -412,7 +130,6 @@ export const FournisseursPage: React.FC = () => {
   const moyenneDepenses =
     totalFournisseurs > 0 ? totalDepenses / totalFournisseurs : 0;
 
-  // Données pour le graphique
   const chartData = fournisseurs
     .filter((f) => Number(f.total_depenses || 0) > 0)
     .map((f) => ({
@@ -559,121 +276,98 @@ export const FournisseursPage: React.FC = () => {
     }
   };
 
+  const stats = [
+    { label: "Total fournisseurs", value: String(totalFournisseurs), border: "border-l-primary-500" },
+    { label: "Alertes actives", value: String(alertesActives), border: "border-l-warning-500" },
+    { label: "Total des dépenses", value: `${totalDepenses.toLocaleString()} FCFA`, border: "border-l-success-500" },
+    { label: "Moyenne par fournisseur", value: `${moyenneDepenses.toLocaleString()} FCFA`, border: "border-l-cyan-500" },
+  ];
+
   return (
-    <Container>
-      <Header>
-        <h1>
-          <Truck size={32} />
-          FOURNISSEURS
-        </h1>
-        {/* ✅ WRAPPED: Ajouter button */}
-        <ProtectedAction module="fournisseurs" action="create">
-          <Button variant="primary" onClick={() => handleOpenModal()}>
-            <Plus size={16} /> Ajouter
-          </Button>
-        </ProtectedAction>
-      </Header>
+    <div className="page-container">
+      <PageHeader
+        title="Fournisseurs"
+        description="Gérez vos fournisseurs, suivez les dépenses et recevez des alertes d'échéance."
+        actions={
+          <ProtectedAction module="fournisseurs" action="create">
+            <button onClick={() => handleOpenModal()} className="btn-primary btn-md">
+              <Plus className="h-4 w-4" /> Ajouter
+            </button>
+          </ProtectedAction>
+        }
+      />
 
       {error && (
-        <div
-          role="alert"
-          style={{
-            marginBottom: "16px",
-            padding: "12px",
-            borderRadius: "8px",
-            background: "rgba(220,38,38,0.15)",
-            color: "#fca5a5",
-          }}
-        >
-          Erreur de chargement : {error}
-          <Button variant="secondary" onClick={() => void loadFournisseurs()}>
-            <RefreshCw size={14} /> Réessayer
-          </Button>
+        <div className="card mb-6 flex items-center justify-between border border-error-500/30 p-4">
+          <span className="text-sm text-error-600 dark:text-error-400">Erreur de chargement : {error}</span>
+          <button onClick={() => void loadFournisseurs()} className="btn-secondary btn-sm">
+            <RefreshCw className="h-3.5 w-3.5" /> Réessayer
+          </button>
         </div>
       )}
 
-      {/* Dashboard */}
-      <StatsGrid>
-        <StatCard color="#4facfe">
-          <div className="stat-value">{totalFournisseurs}</div>
-          <div className="stat-label">Total fournisseurs</div>
-        </StatCard>
-        <StatCard color="#f59e0b">
-          <div className="stat-value">{alertesActives}</div>
-          <div className="stat-label">Alertes actives</div>
-        </StatCard>
-        <StatCard color="#10b981">
-          <div className="stat-value">
-            {totalDepenses.toLocaleString()} FCFA
+      <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 xl:grid-cols-4">
+        {stats.map((s) => (
+          <div key={s.label} className={cn("card p-5 border-l-4", s.border)}>
+            <p className="text-2xl font-bold text-app-primary">{s.value}</p>
+            <p className="mt-1 text-2xs font-semibold uppercase tracking-wide text-app-tertiary">{s.label}</p>
           </div>
-          <div className="stat-label">Total des dépenses</div>
-        </StatCard>
-        <StatCard color="#8b5cf6">
-          <div className="stat-value">
-            {moyenneDepenses.toLocaleString()} FCFA
-          </div>
-          <div className="stat-label">Moyenne par fournisseur</div>
-        </StatCard>
-      </StatsGrid>
+        ))}
+      </div>
 
-      {/* Graphique */}
       {chartData.length > 0 && (
-        <ChartContainer>
-          <div className="chart-header">
-            <h3>
-              <BarChart3 size={18} />
-              Dépenses par fournisseur
-            </h3>
-          </div>
+        <div className="card p-5 mb-6">
+          <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-primary-600 dark:text-primary-400">
+            <BarChart3 className="h-4 w-4" />
+            Dépenses par fournisseur
+          </h3>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={chartData} layout="vertical" margin={{ left: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis type="number" tick={{ fill: "#94a3b8" }} />
+              <CartesianGrid strokeDasharray="3 3" className="stroke-app" stroke="var(--color-border)" />
+              <XAxis type="number" tick={{ fill: "var(--color-text-tertiary)" }} />
               <YAxis
                 type="category"
                 dataKey="name"
-                tick={{ fill: "#94a3b8", fontSize: 11 }}
+                tick={{ fill: "var(--color-text-tertiary)", fontSize: 11 }}
                 width={100}
               />
               <Tooltip
                 formatter={(value) => `${Number(value).toLocaleString()} FCFA`}
+                contentStyle={{
+                  background: "var(--color-card)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "8px",
+                  color: "var(--color-text-primary)",
+                }}
               />
-              <Bar dataKey="dépenses" fill="#4facfe" radius={[0, 4, 4, 0]}>
+              <Bar dataKey="dépenses" radius={[0, 4, 4, 0]}>
                 {chartData.map((_, index) => (
-                  <Cell
-                    key={index}
-                    fill={index % 2 === 0 ? "#1e3a5f" : "#4facfe"}
-                  />
+                  <Cell key={index} fill={index % 2 === 0 ? "#1d4ed8" : "#06b6d4"} />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-        </ChartContainer>
+        </div>
       )}
 
-      {/* Tableau */}
-      <TableWrapper>
+      <div className="card overflow-x-auto p-4">
         {loading ? (
-          <div
-            style={{ textAlign: "center", padding: "20px", color: "#94a3b8" }}
-          >
-            Chargement...
-          </div>
+          <div className="py-8 text-center text-sm text-app-secondary">Chargement...</div>
         ) : fournisseurs.length === 0 ? (
-          <EmptyState>
-            <Truck size={48} />
-            <p>Aucun fournisseur enregistré.</p>
-          </EmptyState>
+          <div className="py-12 text-center">
+            <Truck className="mx-auto mb-3 h-10 w-10 text-app-tertiary opacity-50" />
+            <p className="text-sm text-app-secondary">Aucun fournisseur enregistré.</p>
+          </div>
         ) : (
-          <StyledTable>
+          <table className="w-full text-sm">
             <thead>
-              <tr>
-                <th>Nom</th>
-                <th>Date d'alerte</th>
-                <th>Message</th>
-                <th>Total dépenses</th>
-                <th>Statut</th>
-                <th style={{ textAlign: "center" }}>Actions</th>
+              <tr className="border-b-2 border-app text-app-tertiary">
+                <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Nom</th>
+                <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Date d'alerte</th>
+                <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Message</th>
+                <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Total dépenses</th>
+                <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Statut</th>
+                <th className="px-3 py-2.5 text-center text-2xs font-semibold uppercase tracking-wide">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -696,7 +390,7 @@ export const FournisseursPage: React.FC = () => {
                     effectiveDay,
                   );
                   const diff = differenceInDays(alertDate, today);
-                  isUrgent = diff <= 0 && isActive; // si date passée ou aujourd'hui
+                  isUrgent = diff <= 0 && isActive;
                   alertDisplay = `Jour ${f.recurring_day} (mensuel)`;
                 } else if (f.alert_date) {
                   const alertDate = new Date(f.alert_date);
@@ -706,207 +400,121 @@ export const FournisseursPage: React.FC = () => {
                 }
 
                 return (
-                  <tr
-                    key={f.id}
-                    style={{
-                      background: isUrgent
-                        ? "rgba(220,38,38,0.15)"
-                        : "transparent",
-                    }}
-                  >
-                    <td>
+                  <tr key={f.id} className={cn("border-b border-app", isUrgent && "bg-error-500/10")}>
+                    <td className="px-3 py-2.5 text-app-primary">
                       {f.name}
                       {f.is_recurring && (
-                        <RecurringBadge>
-                          <RefreshCw size={10} /> Récurrent
-                        </RecurringBadge>
+                        <span className="ml-2 inline-flex items-center gap-1 rounded bg-primary-500/15 px-2 py-0.5 text-2xs font-semibold text-primary-600 dark:text-primary-400">
+                          <RefreshCw className="h-2.5 w-2.5" /> Récurrent
+                        </span>
                       )}
                     </td>
-                    <td>{alertDisplay}</td>
-                    <td>{f.message || "-"}</td>
-                    <td>
-                      {Number(f.total_depenses || 0).toLocaleString()} FCFA
+                    <td className="px-3 py-2.5 text-app-secondary">{alertDisplay}</td>
+                    <td className="px-3 py-2.5 text-app-secondary">{f.message || "-"}</td>
+                    <td className="px-3 py-2.5 text-app-primary whitespace-nowrap">{Number(f.total_depenses || 0).toLocaleString()} FCFA</td>
+                    <td className="px-3 py-2.5">
+                      <span
+                        className={cn(
+                          "badge",
+                          isActive
+                            ? isUrgent
+                              ? "bg-error-500/15 text-error-600 dark:text-error-400 ring-1 ring-error-500/25"
+                              : "bg-warning-500/15 text-warning-600 dark:text-warning-400 ring-1 ring-warning-500/25"
+                            : "bg-success-500/15 text-success-600 dark:text-success-400 ring-1 ring-success-500/25",
+                        )}
+                      >
+                        {isActive ? (isUrgent ? "En alerte" : "Actif") : "Terminé"}
+                      </span>
                     </td>
-                    <td>
-                      <StatusBadge active={isActive}>
-                        {isActive
-                          ? isUrgent
-                            ? "⚠️ En alerte"
-                            : "Actif"
-                          : "✅ Terminé"}
-                      </StatusBadge>
-                    </td>
-                    <td>
-                      <ActionGroup>
+                    <td className="px-3 py-2.5">
+                      <div className="flex flex-wrap justify-center gap-2">
                         {isActive && (
-                          // ✅ WRAPPED: Mark Done button (edit action)
                           <ProtectedAction module="fournisseurs" action="edit">
-                            <Button
-                              variant="success"
-                              onClick={() => handleMarkDone(f.id)}
-                              style={{ padding: "4px 10px", fontSize: "11px" }}
-                            >
-                              <CheckCircle size={14} /> Terminé
-                            </Button>
+                            <button onClick={() => handleMarkDone(f.id)} className="btn-sm bg-success-600 text-white hover:bg-success-500">
+                              <CheckCircle className="h-3.5 w-3.5" /> Terminé
+                            </button>
                           </ProtectedAction>
                         )}
-                        {/* ✅ WRAPPED: Edit button */}
                         <ProtectedAction module="fournisseurs" action="edit">
-                          <Button
-                            variant="secondary"
-                            onClick={() => handleOpenModal(f)}
-                            style={{ padding: "4px 10px", fontSize: "11px" }}
-                          >
-                            <Edit size={14} />
-                          </Button>
+                          <button onClick={() => handleOpenModal(f)} className="btn-secondary btn-sm">
+                            <Edit className="h-3.5 w-3.5" />
+                          </button>
                         </ProtectedAction>
-                        {/* ✅ WRAPPED: Delete button */}
                         <ProtectedAction module="fournisseurs" action="delete">
-                          <Button
-                            variant="danger"
-                            onClick={() => handleDelete(f.id)}
-                            style={{ padding: "4px 10px", fontSize: "11px" }}
-                          >
-                            <Trash2 size={14} />
-                          </Button>
+                          <button onClick={() => handleDelete(f.id)} className="btn-danger btn-sm">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
                         </ProtectedAction>
-                      </ActionGroup>
+                      </div>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
-          </StyledTable>
+          </table>
         )}
-      </TableWrapper>
+      </div>
 
-      {/* Modal Ajout / Édition */}
       {modalOpen && (
-        <ModalOverlay onClick={handleCloseModal}>
-          <Modal onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>
-                {editingId
-                  ? "Modifier le fournisseur"
-                  : "Ajouter un fournisseur"}
+        <div className="modal-overlay" onClick={handleCloseModal}>
+          <div className="modal-content max-w-[500px]" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-app-primary">
+                {editingId ? "Modifier le fournisseur" : "Ajouter un fournisseur"}
               </h2>
-              <Button
-                variant="secondary"
-                onClick={handleCloseModal}
-                style={{ padding: "4px" }}
-              >
-                <X size={18} />
-              </Button>
+              <button onClick={handleCloseModal} className="btn-ghost btn-sm">
+                <X className="h-4 w-4" />
+              </button>
             </div>
             <form onSubmit={handleSubmit}>
-              <Field>
-                <label>Nom *</label>
-                <input
-                  name="name"
-                  value={form.name}
-                  onChange={handleChange}
-                  placeholder="Nom du fournisseur"
-                  required
-                />
-              </Field>
+              <div className="mb-3 flex flex-col gap-1.5">
+                <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Nom *</label>
+                <input name="name" value={form.name} onChange={handleChange} placeholder="Nom du fournisseur" className="input-md" required />
+              </div>
 
-              <Field>
-                <div className="checkbox-group">
-                  <label>
-                    <input
-                      type="checkbox"
-                      name="is_recurring"
-                      checked={form.is_recurring}
-                      onChange={handleChange}
-                    />
-                    <Calendar size={16} />
-                    Alerte récurrente chaque mois
-                  </label>
-                </div>
-              </Field>
+              <div className="mb-3">
+                <label className="flex items-center gap-2 text-sm text-app-secondary cursor-pointer">
+                  <input type="checkbox" name="is_recurring" checked={form.is_recurring} onChange={handleChange} className="h-[18px] w-[18px] accent-primary-500" />
+                  <Calendar className="h-4 w-4" />
+                  Alerte récurrente chaque mois
+                </label>
+              </div>
 
               {form.is_recurring ? (
-                <Field>
-                  <label>Jour du mois (1-31) *</label>
-                  <input
-                    name="recurring_day"
-                    type="number"
-                    min="1"
-                    max="31"
-                    value={form.recurring_day}
-                    onChange={handleChange}
-                    placeholder="Ex: 10"
-                    required
-                  />
-                  <small style={{ color: "#94a3b8", fontSize: "11px" }}>
-                    L'alerte se déclenchera chaque mois à cette date et
-                    continuera jusqu'à résolution.
-                  </small>
-                </Field>
+                <div className="mb-3 flex flex-col gap-1.5">
+                  <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Jour du mois (1-31) *</label>
+                  <input name="recurring_day" type="number" min="1" max="31" value={form.recurring_day} onChange={handleChange} placeholder="Ex: 10" className="input-md" required />
+                  <small className="text-xs text-app-tertiary">L'alerte se déclenchera chaque mois à cette date et continuera jusqu'à résolution.</small>
+                </div>
               ) : (
-                <Field>
-                  <label>Date d'alerte *</label>
-                  <input
-                    name="alert_date"
-                    type="date"
-                    value={form.alert_date}
-                    onChange={handleChange}
-                    required
-                  />
-                </Field>
+                <div className="mb-3 flex flex-col gap-1.5">
+                  <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Date d'alerte *</label>
+                  <input name="alert_date" type="date" value={form.alert_date} onChange={handleChange} className="input-md" required />
+                </div>
               )}
 
-              <Field>
-                <label>Message</label>
-                <textarea
-                  name="message"
-                  value={form.message}
-                  onChange={handleChange}
-                  placeholder="Message d'alerte"
-                />
-              </Field>
+              <div className="mb-3 flex flex-col gap-1.5">
+                <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Message</label>
+                <textarea name="message" value={form.message} onChange={handleChange} placeholder="Message d'alerte" className="input-md min-h-[60px] resize-vertical" />
+              </div>
 
-              <Field>
-                <label>Total des dépenses (FCFA)</label>
-                <input
-                  name="total_depenses"
-                  type="number"
-                  step="0.01"
-                  value={form.total_depenses}
-                  onChange={handleChange}
-                  placeholder="0"
-                />
-              </Field>
+              <div className="mb-4 flex flex-col gap-1.5">
+                <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Total des dépenses (FCFA)</label>
+                <input name="total_depenses" type="number" step="0.01" value={form.total_depenses} onChange={handleChange} placeholder="0" className="input-md" />
+              </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: "12px",
-                  justifyContent: "flex-end",
-                  marginTop: "16px",
-                }}
-              >
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={handleCloseModal}
-                >
-                  Annuler
-                </Button>
-                {/* ✅ WRAPPED: Submit button (create or edit) */}
-                <ProtectedAction
-                  module="fournisseurs"
-                  action={editingId ? "edit" : "create"}
-                >
-                  <Button variant="primary" type="submit">
+              <div className="flex justify-end gap-3">
+                <button type="button" onClick={handleCloseModal} className="btn-secondary btn-md">Annuler</button>
+                <ProtectedAction module="fournisseurs" action={editingId ? "edit" : "create"}>
+                  <button type="submit" className="btn-primary btn-md">
                     {editingId ? "Mettre à jour" : "Ajouter"}
-                  </Button>
+                  </button>
                 </ProtectedAction>
               </div>
             </form>
-          </Modal>
-        </ModalOverlay>
+          </div>
+        </div>
       )}
-    </Container>
+    </div>
   );
 };

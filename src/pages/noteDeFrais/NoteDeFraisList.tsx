@@ -1,10 +1,10 @@
-// src/pages/NoteDeFrais/NoteDeFraisList.tsx
 import React, { useEffect, useState } from "react";
-import styled from "styled-components";
 import { dbApi } from "../../lib/apiClient";
 import { addNotification } from "../../lib/notifications";
 import { useNotification, useConfirm } from "../../contexts/NotificationContext";
 import { format } from "date-fns";
+import { Receipt, Send, Trash2, Edit } from "lucide-react";
+import { cn } from "../../lib/utils";
 
 interface ExpenseReport {
   id: string;
@@ -26,82 +26,13 @@ interface Props {
   onRefresh: () => void;
 }
 
-const TableWrapper = styled.div`
-  overflow-x: auto;
-  margin: 16px 0;
-`;
-
-const StyledTable = styled.table`
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-  th,
-  td {
-    padding: 8px 12px;
-    border-bottom: 1px solid #1e293b;
-    text-align: left;
-    vertical-align: middle;
-  }
-  th {
-    color: #94a3b8;
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 10px;
-    letter-spacing: 0.5px;
-    border-bottom: 2px solid #334155;
-  }
-`;
-
-const StatusBadge = styled.span<{ status: string }>`
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 600;
-  ${({ status }) => {
-    switch (status) {
-      case "brouillon":
-        return "background: #475569; color: #94a3b8;";
-      case "soumis":
-        return "background: #713f12; color: #fcd34d;";
-      case "valide":
-        return "background: #14532d; color: #86efac;";
-      case "rejete":
-        return "background: #7f1d1d; color: #fca5a5;";
-      case "rembourse":
-        return "background: #1e293b; color: #e2e8f0;";
-      default:
-        return "";
-    }
-  }}
-`;
-
-const Button = styled.button<{ variant?: "primary" | "danger" }>`
-  padding: 4px 10px;
-  border: none;
-  border-radius: 4px;
-  font-weight: 600;
-  font-size: 11px;
-  cursor: pointer;
-  transition: background 0.2s;
-  ${({ variant }) => {
-    if (variant === "primary")
-      return "background: #4facfe; color: #fff; &:hover { background: #3b8edb; }";
-    if (variant === "danger")
-      return "background: #dc2626; color: #fff; &:hover { background: #b91c1c; }";
-    return "background: #334155; color: #e2e8f0; &:hover { background: #475569; }";
-  }}
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-`;
-
-const LoadingContainer = styled.div`
-  text-align: center;
-  padding: 2rem;
-  color: #94a3b8;
-`;
+const STATUS_BADGE: Record<string, string> = {
+  brouillon: "badge badge-neutral",
+  soumis: "badge badge-warning",
+  valide: "badge badge-success",
+  rejete: "badge badge-error",
+  rembourse: "badge badge-neutral",
+};
 
 export const NoteDeFraisList: React.FC<Props> = ({ onEdit, onRefresh }) => {
   const [reports, setReports] = useState<ExpenseReport[]>([]);
@@ -178,89 +109,74 @@ export const NoteDeFraisList: React.FC<Props> = ({ onEdit, onRefresh }) => {
   };
 
   if (loading) {
-    return (
-      <LoadingContainer>
-        <i className="fas fa-spinner fa-spin"></i> Chargement...
-      </LoadingContainer>
-    );
+    return <div className="py-8 text-center text-sm text-app-secondary">Chargement...</div>;
   }
 
   if (error) {
-    return <div style={{ color: "#dc2626" }}>Erreur : {error}</div>;
+    return <div className="py-4 text-sm text-error-600 dark:text-error-400">Erreur : {error}</div>;
   }
 
   if (reports.length === 0) {
     return (
-      <div style={{ textAlign: "center", padding: "2rem", color: "#94a3b8" }}>
-        <i
-          className="fas fa-receipt"
-          style={{ fontSize: "32px", display: "block", marginBottom: "12px" }}
-        ></i>
-        Aucune note de frais.
+      <div className="py-12 text-center">
+        <Receipt className="mx-auto mb-3 h-10 w-10 text-app-tertiary opacity-50" />
+        <p className="text-sm text-app-secondary">Aucune note de frais.</p>
       </div>
     );
   }
 
   return (
-    <TableWrapper>
-      <StyledTable>
+    <div className="overflow-x-auto mt-4">
+      <table className="w-full text-sm">
         <thead>
-          <tr>
-            <th>Référence</th>
-            <th>Collaborateur</th>
-            <th>Période</th>
-            <th>Total HT</th>
-            <th>Net à payer</th>
-            <th>Statut</th>
-            <th>Actions</th>
+          <tr className="border-b-2 border-app text-app-tertiary">
+            <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Référence</th>
+            <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Collaborateur</th>
+            <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Période</th>
+            <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Total HT</th>
+            <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Net à payer</th>
+            <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Statut</th>
+            <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Actions</th>
           </tr>
         </thead>
         <tbody>
           {reports.map((report) => (
-            <tr key={report.id}>
-              <td>{report.reference}</td>
-              <td>{report.collaborateur_name}</td>
-              <td>
+            <tr key={report.id} className="border-b border-app">
+              <td className="px-3 py-2.5 text-app-primary font-medium">{report.reference}</td>
+              <td className="px-3 py-2.5 text-app-primary">{report.collaborateur_name}</td>
+              <td className="px-3 py-2.5 text-app-secondary whitespace-nowrap">
                 {report.date_debut && report.date_fin
-                  ? `${format(new Date(report.date_debut), "dd/MM/yyyy")} - ${format(
-                      new Date(report.date_fin),
-                      "dd/MM/yyyy",
-                    )}`
+                  ? `${format(new Date(report.date_debut), "dd/MM/yyyy")} - ${format(new Date(report.date_fin), "dd/MM/yyyy")}`
                   : "Non défini"}
               </td>
-              <td>{report.total_ht.toFixed(0)} FCFA</td>
-              <td>{report.net_a_payer.toFixed(0)} FCFA</td>
-              <td>
-                <StatusBadge status={report.status}>
+              <td className="px-3 py-2.5 text-app-primary whitespace-nowrap">{report.total_ht.toFixed(0)} FCFA</td>
+              <td className="px-3 py-2.5 text-app-primary whitespace-nowrap">{report.net_a_payer.toFixed(0)} FCFA</td>
+              <td className="px-3 py-2.5">
+                <span className={cn(STATUS_BADGE[report.status] || "badge badge-neutral")}>
                   {report.status}
-                </StatusBadge>
+                </span>
               </td>
-              <td>
-                <Button variant="primary" onClick={() => onEdit(report.id)}>
-                  Éditer
-                </Button>
-                {report.status === "brouillon" && (
-                  <>
-                    <Button
-                      style={{ marginLeft: "4px" }}
-                      onClick={() => handleSubmit(report.id)}
-                    >
-                      Soumettre
-                    </Button>
-                    <Button
-                      variant="danger"
-                      style={{ marginLeft: "4px" }}
-                      onClick={() => handleDelete(report.id)}
-                    >
-                      Supprimer
-                    </Button>
-                  </>
-                )}
+              <td className="px-3 py-2.5">
+                <div className="flex gap-2">
+                  <button onClick={() => onEdit(report.id)} className="btn-secondary btn-sm">
+                    <Edit className="h-3.5 w-3.5" /> Éditer
+                  </button>
+                  {report.status === "brouillon" && (
+                    <>
+                      <button onClick={() => handleSubmit(report.id)} className="btn-primary btn-sm">
+                        <Send className="h-3.5 w-3.5" /> Soumettre
+                      </button>
+                      <button onClick={() => handleDelete(report.id)} className="btn-danger btn-sm">
+                        <Trash2 className="h-3.5 w-3.5" /> Supprimer
+                      </button>
+                    </>
+                  )}
+                </div>
               </td>
             </tr>
           ))}
         </tbody>
-      </StyledTable>
-    </TableWrapper>
+      </table>
+    </div>
   );
 };

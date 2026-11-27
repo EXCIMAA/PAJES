@@ -1,14 +1,13 @@
-// src/pages/NoteDeFrais/NoteDeFraisForm.tsx
 import React, { useEffect, useState, useRef } from "react";
-import styled from "styled-components";
 import { dbApi } from "../../lib/apiClient";
 import { addNotification } from "../../lib/notifications";
 import { useNotification } from "../../contexts/NotificationContext";
 import { format } from "date-fns";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { Trash2, Plus, FileText } from "lucide-react";
+import { cn } from "../../lib/utils";
 
-// ==================== TYPES ====================
 interface ExpenseLine {
   id?: string;
   date: string;
@@ -50,169 +49,6 @@ interface Props {
   onCancel: () => void;
 }
 
-// ==================== STYLES ====================
-const FormContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  background: #0f172a;
-  padding: 24px;
-  border-radius: 12px;
-`;
-
-const Grid = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  @media (max-width: 768px) {
-    grid-template-columns: 1fr;
-  }
-`;
-
-const Field = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  label {
-    font-size: 12px;
-    color: #94a3b8;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  input,
-  select {
-    padding: 6px 10px;
-    border: 1px solid #334155;
-    border-radius: 6px;
-    background: #1e293b;
-    color: #e2e8f0;
-    font-size: 13px;
-    &:focus {
-      outline: none;
-      border-color: #4facfe;
-    }
-  }
-`;
-
-const LineTableWrapper = styled.div`
-  overflow-x: auto;
-  margin: 12px 0;
-`;
-
-const LineTable = styled.table`
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-  th,
-  td {
-    padding: 6px 8px;
-    border: 1px solid #1e293b;
-    text-align: left;
-  }
-  th {
-    background: #1e293b;
-    color: #94a3b8;
-    text-transform: uppercase;
-    font-size: 10px;
-  }
-  input,
-  select {
-    width: 100%;
-    background: transparent;
-    border: none;
-    color: #e2e8f0;
-    padding: 4px;
-    &:focus {
-      outline: 1px solid #4facfe;
-    }
-  }
-  select option {
-    background: #1e293b;
-  }
-`;
-
-const Button = styled.button<{ variant?: "primary" | "secondary" | "danger" }>`
-  padding: 6px 14px;
-  border: none;
-  border-radius: 4px;
-  font-weight: 600;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background 0.2s;
-  ${({ variant }) => {
-    if (variant === "primary")
-      return "background: #4facfe; color: #fff; &:hover { background: #3b8edb; }";
-    if (variant === "secondary")
-      return "background: #334155; color: #e2e8f0; &:hover { background: #475569; }";
-    if (variant === "danger")
-      return "background: #dc2626; color: #fff; &:hover { background: #b91c1c; }";
-    return "background: #1e293b; color: #e2e8f0; &:hover { background: #334155; }";
-  }}
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-`;
-
-const TotalRow = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 30px;
-  padding: 12px 0;
-  border-top: 2px solid #334155;
-  margin-top: 12px;
-  .total-item {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    span:first-child {
-      font-size: 11px;
-      color: #94a3b8;
-      text-transform: uppercase;
-    }
-    span:last-child {
-      font-size: 16px;
-      font-weight: 700;
-      color: #e2e8f0;
-    }
-  }
-`;
-
-const SignatureSection = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  margin: 12px 0;
-  label {
-    color: #94a3b8;
-    font-size: 13px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    input[type="checkbox"] {
-      width: 18px;
-      height: 18px;
-    }
-  }
-  input[type="text"] {
-    flex: 1;
-    padding: 6px 10px;
-    border: 1px solid #334155;
-    border-radius: 6px;
-    background: #1e293b;
-    color: #e2e8f0;
-  }
-`;
-
-const ActionButtons = styled.div`
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  margin-top: 16px;
-`;
-
-// ==================== CONFIG DES DÉSIGNATIONS ====================
 const DESIGNATION_MAP: Record<string, number> = {
   Restauration: 5000,
   "Taxi ville": 5000,
@@ -222,7 +58,6 @@ const DESIGNATION_MAP: Record<string, number> = {
 };
 const DESIGNATIONS = Object.keys(DESIGNATION_MAP);
 
-// ==================== COMPOSANT ====================
 export const NoteDeFraisForm: React.FC<Props> = ({
   reportId,
   onSuccess,
@@ -260,7 +95,6 @@ export const NoteDeFraisForm: React.FC<Props> = ({
   const printRef = useRef<HTMLDivElement>(null);
   const { notify } = useNotification();
 
-  // Charger missions et clients
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -284,7 +118,6 @@ export const NoteDeFraisForm: React.FC<Props> = ({
     fetchData();
   }, []);
 
-  // Charger une note existante
   useEffect(() => {
     if (reportId) {
       const fetchReport = async () => {
@@ -363,7 +196,6 @@ export const NoteDeFraisForm: React.FC<Props> = ({
 
   const { total_ht, total_tva, total_ttc, net_a_payer } = calculateTotals();
 
-  // ============ SOUMISSION ============
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!header.collaborateur_name) {
@@ -380,7 +212,6 @@ export const NoteDeFraisForm: React.FC<Props> = ({
     try {
       setLoading(true);
 
-      // Générer la référence
       let reference = header.reference;
       if (!reference) {
         const initials = header.collaborateur_initials || "XX";
@@ -389,12 +220,10 @@ export const NoteDeFraisForm: React.FC<Props> = ({
         reference = `NDF_${dateStr}_${initials}`;
       }
 
-      // Nettoyer les dates ("" → null)
       const dateDebut = header.date_debut || null;
       const dateFin = header.date_fin || null;
       const moisDate = header.mois ? header.mois + "-01" : null;
 
-      // ✅ VALIDATION DES CLÉS ÉTRANGÈRES : ne envoyer que des IDs existants
       let missionId = null;
       if (header.mission_id && header.mission_id.trim() !== "") {
         const missionExists = missions.some((m) => m.id === header.mission_id);
@@ -493,7 +322,6 @@ export const NoteDeFraisForm: React.FC<Props> = ({
     }
   };
 
-  // ============ EXPORT PDF ============
   const exportPDF = async () => {
     if (!printRef.current) return;
     try {
@@ -519,13 +347,20 @@ export const NoteDeFraisForm: React.FC<Props> = ({
     return found ? found.subject : "Non définie";
   };
 
-  if (loading) return <div>Chargement...</div>;
-  if (error) return <div style={{ color: "#dc2626" }}>Erreur : {error}</div>;
+  if (loading) return <div className="py-8 text-center text-sm text-app-secondary">Chargement...</div>;
+  if (error) return <div className="py-4 text-sm text-error-600 dark:text-error-400">Erreur : {error}</div>;
+
+  const totals = [
+    { label: "Total HT", value: total_ht },
+    { label: "Montant TVA", value: total_tva },
+    { label: "Montant TTC", value: total_ttc },
+    { label: "Total NDF", value: total_ttc },
+    { label: "Net à payer", value: net_a_payer },
+  ];
 
   return (
     <form onSubmit={handleSubmit}>
-      <FormContainer>
-        {/* ====== ZONE D'IMPRESSION (PDF) ====== */}
+      <div className="flex flex-col gap-5 card p-6">
         <div
           ref={printRef}
           style={{
@@ -539,579 +374,220 @@ export const NoteDeFraisForm: React.FC<Props> = ({
             fontFamily: "Arial, sans-serif",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: "20px",
-            }}
-          >
-            <img
-              src="/logos/ExicimaaLogo"
-              alt="Logo"
-              style={{ height: "60px", objectFit: "contain" }}
-            />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+            <img src="/logos/ExicimaaLogo" alt="Logo" style={{ height: "60px", objectFit: "contain" }} />
             <div style={{ textAlign: "right" }}>
               <h2 style={{ margin: 0, color: "#1e3a5f" }}>NOTE DE FRAIS</h2>
-              <p style={{ margin: 0, fontSize: "12px", color: "#555" }}>
-                Réf: {header.reference || "N/A"}
-              </p>
+              <p style={{ margin: 0, fontSize: "12px", color: "#555" }}>Réf: {header.reference || "N/A"}</p>
             </div>
           </div>
-
-          <div
-            style={{
-              display: "flex",
-              gap: "20px",
-              flexWrap: "wrap",
-              marginBottom: "16px",
-              fontSize: "13px",
-            }}
-          >
-            <div>
-              <strong>Collaborateur :</strong> {header.collaborateur_name}
-            </div>
-            <div>
-              <strong>Initiales :</strong> {header.collaborateur_initials}
-            </div>
-            <div>
-              <strong>Tél :</strong> {header.collaborateur_phone}
-            </div>
-            <div>
-              <strong>Adresse :</strong> {header.collaborateur_address}
-            </div>
-            <div>
-              <strong>Période :</strong> {header.date_debut} - {header.date_fin}
-            </div>
-            <div>
-              <strong>Mission :</strong> {getMissionName()}
-            </div>
+          <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", marginBottom: "16px", fontSize: "13px" }}>
+            <div><strong>Collaborateur :</strong> {header.collaborateur_name}</div>
+            <div><strong>Initiales :</strong> {header.collaborateur_initials}</div>
+            <div><strong>Tél :</strong> {header.collaborateur_phone}</div>
+            <div><strong>Adresse :</strong> {header.collaborateur_address}</div>
+            <div><strong>Période :</strong> {header.date_debut} - {header.date_fin}</div>
+            <div><strong>Mission :</strong> {getMissionName()}</div>
           </div>
-
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: "12px",
-              marginTop: "10px",
-            }}
-          >
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginTop: "10px" }}>
             <thead>
               <tr style={{ background: "#f0f0f0" }}>
-                <th
-                  style={{
-                    border: "1px solid #000",
-                    padding: "5px",
-                    textAlign: "left",
-                  }}
-                >
-                  Date
-                </th>
-                <th
-                  style={{
-                    border: "1px solid #000",
-                    padding: "5px",
-                    textAlign: "left",
-                  }}
-                >
-                  Désignation
-                </th>
-                <th
-                  style={{
-                    border: "1px solid #000",
-                    padding: "5px",
-                    textAlign: "center",
-                  }}
-                >
-                  Qté
-                </th>
-                <th
-                  style={{
-                    border: "1px solid #000",
-                    padding: "5px",
-                    textAlign: "center",
-                  }}
-                >
-                  Devise
-                </th>
-                <th
-                  style={{
-                    border: "1px solid #000",
-                    padding: "5px",
-                    textAlign: "right",
-                  }}
-                >
-                  Montant HT
-                </th>
-                <th
-                  style={{
-                    border: "1px solid #000",
-                    padding: "5px",
-                    textAlign: "right",
-                  }}
-                >
-                  TVA
-                </th>
-                <th
-                  style={{
-                    border: "1px solid #000",
-                    padding: "5px",
-                    textAlign: "right",
-                  }}
-                >
-                  Net HT
-                </th>
+                {["Date", "Désignation", "Qté", "Devise", "Montant HT", "TVA", "Net HT"].map((h) => (
+                  <th key={h} style={{ border: "1px solid #000", padding: "5px", textAlign: h === "Qté" || h === "Devise" ? "center" : "right" }}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {lines.map((l, idx) => (
                 <tr key={idx}>
-                  <td style={{ border: "1px solid #000", padding: "4px" }}>
-                    {l.date}
-                  </td>
-                  <td style={{ border: "1px solid #000", padding: "4px" }}>
-                    {l.designation}
-                  </td>
-                  <td
-                    style={{
-                      border: "1px solid #000",
-                      padding: "4px",
-                      textAlign: "center",
-                    }}
-                  >
-                    {l.quantite}
-                  </td>
-                  <td
-                    style={{
-                      border: "1px solid #000",
-                      padding: "4px",
-                      textAlign: "center",
-                    }}
-                  >
-                    {l.devise}
-                  </td>
-                  <td
-                    style={{
-                      border: "1px solid #000",
-                      padding: "4px",
-                      textAlign: "right",
-                    }}
-                  >
-                    {l.montant_ht.toFixed(0)}
-                  </td>
-                  <td
-                    style={{
-                      border: "1px solid #000",
-                      padding: "4px",
-                      textAlign: "right",
-                    }}
-                  >
-                    {l.tva.toFixed(0)}
-                  </td>
-                  <td
-                    style={{
-                      border: "1px solid #000",
-                      padding: "4px",
-                      textAlign: "right",
-                    }}
-                  >
-                    {(l.quantite * l.montant_ht).toFixed(0)}
-                  </td>
+                  <td style={{ border: "1px solid #000", padding: "4px" }}>{l.date}</td>
+                  <td style={{ border: "1px solid #000", padding: "4px" }}>{l.designation}</td>
+                  <td style={{ border: "1px solid #000", padding: "4px", textAlign: "center" }}>{l.quantite}</td>
+                  <td style={{ border: "1px solid #000", padding: "4px", textAlign: "center" }}>{l.devise}</td>
+                  <td style={{ border: "1px solid #000", padding: "4px", textAlign: "right" }}>{l.montant_ht.toFixed(0)}</td>
+                  <td style={{ border: "1px solid #000", padding: "4px", textAlign: "right" }}>{l.tva.toFixed(0)}</td>
+                  <td style={{ border: "1px solid #000", padding: "4px", textAlign: "right" }}>{(l.quantite * l.montant_ht).toFixed(0)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-
-          <div
-            style={{
-              marginTop: "15px",
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: "30px",
-              fontSize: "13px",
-            }}
-          >
-            <div>
-              <strong>Total HT :</strong> {total_ht.toFixed(0)} FCFA
-            </div>
-            <div>
-              <strong>TVA ({header.taux_tva || 0}%) :</strong>{" "}
-              {total_tva.toFixed(0)} FCFA
-            </div>
-            <div>
-              <strong>TTC :</strong> {total_ttc.toFixed(0)} FCFA
-            </div>
-            <div>
-              <strong>Avance :</strong> {header.avance || 0} FCFA
-            </div>
-            <div>
-              <strong>Net à payer :</strong> {net_a_payer.toFixed(0)} FCFA
-            </div>
+          <div style={{ marginTop: "15px", display: "flex", justifyContent: "flex-end", gap: "30px", fontSize: "13px" }}>
+            <div><strong>Total HT :</strong> {total_ht.toFixed(0)} FCFA</div>
+            <div><strong>TVA ({header.taux_tva || 0}%) :</strong> {total_tva.toFixed(0)} FCFA</div>
+            <div><strong>TTC :</strong> {total_ttc.toFixed(0)} FCFA</div>
+            <div><strong>Avance :</strong> {header.avance || 0} FCFA</div>
+            <div><strong>Net à payer :</strong> {net_a_payer.toFixed(0)} FCFA</div>
           </div>
-
-          <div
-            style={{
-              marginTop: "20px",
-              borderTop: "1px solid #ccc",
-              paddingTop: "10px",
-              display: "flex",
-              justifyContent: "space-between",
-            }}
-          >
-            <div>
-              <strong>Modalité de règlement :</strong>{" "}
-              {header.modalite_reglement}
-            </div>
-            <div>
-              <strong>Signature du collaborateur :</strong>{" "}
-              {header.signature ? "Signé" : "Non signé"}
-              <span style={{ marginLeft: "10px", fontStyle: "italic" }}>
-                {header.collaborateur_name}
-              </span>
-            </div>
-            <div>
-              <em>
-                Fait à {header.collaborateur_address || "..."}, le{" "}
-                {new Date().toLocaleDateString()}
-              </em>
-            </div>
+          <div style={{ marginTop: "20px", borderTop: "1px solid #ccc", paddingTop: "10px", display: "flex", justifyContent: "space-between" }}>
+            <div><strong>Modalité de règlement :</strong> {header.modalite_reglement}</div>
+            <div><strong>Signature du collaborateur :</strong> {header.signature ? "Signé" : "Non signé"} <span style={{ marginLeft: "10px", fontStyle: "italic" }}>{header.collaborateur_name}</span></div>
+            <div><em>Fait à {header.collaborateur_address || "..."}, le {new Date().toLocaleDateString()}</em></div>
           </div>
         </div>
 
-        {/* ====== FORMULAIRE VISIBLE ====== */}
-        <Grid>
-          <Field>
-            <label>Collaborateur</label>
-            <input
-              value={header.collaborateur_name || ""}
-              onChange={(e) =>
-                handleHeaderChange("collaborateur_name", e.target.value)
-              }
-              placeholder="Nom complet"
-              required
-            />
-          </Field>
-          <Field>
-            <label>Initiales</label>
-            <input
-              value={header.collaborateur_initials || ""}
-              onChange={(e) =>
-                handleHeaderChange("collaborateur_initials", e.target.value)
-              }
-              placeholder="MJ"
-              maxLength={10}
-            />
-          </Field>
-          <Field>
-            <label>Téléphone</label>
-            <input
-              value={header.collaborateur_phone || ""}
-              onChange={(e) =>
-                handleHeaderChange("collaborateur_phone", e.target.value)
-              }
-            />
-          </Field>
-          <Field>
-            <label>Adresse</label>
-            <input
-              value={header.collaborateur_address || ""}
-              onChange={(e) =>
-                handleHeaderChange("collaborateur_address", e.target.value)
-              }
-            />
-          </Field>
-          <Field>
-            <label>Date début</label>
-            <input
-              type="date"
-              value={header.date_debut || ""}
-              onChange={(e) => handleHeaderChange("date_debut", e.target.value)}
-            />
-          </Field>
-          <Field>
-            <label>Date fin</label>
-            <input
-              type="date"
-              value={header.date_fin || ""}
-              onChange={(e) => handleHeaderChange("date_fin", e.target.value)}
-            />
-          </Field>
-          <Field>
-            <label>Mois</label>
-            <input
-              type="month"
-              value={header.mois || ""}
-              onChange={(e) => handleHeaderChange("mois", e.target.value)}
-            />
-          </Field>
-          <Field>
-            <label>Mission</label>
-            <select
-              value={header.mission_id || ""}
-              onChange={(e) => handleHeaderChange("mission_id", e.target.value)}
-              disabled={loadingMissions}
-            >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Collaborateur</label>
+            <input value={header.collaborateur_name || ""} onChange={(e) => handleHeaderChange("collaborateur_name", e.target.value)} placeholder="Nom complet" className="input-md" required />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Initiales</label>
+            <input value={header.collaborateur_initials || ""} onChange={(e) => handleHeaderChange("collaborateur_initials", e.target.value)} placeholder="MJ" maxLength={10} className="input-md" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Téléphone</label>
+            <input value={header.collaborateur_phone || ""} onChange={(e) => handleHeaderChange("collaborateur_phone", e.target.value)} className="input-md" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Adresse</label>
+            <input value={header.collaborateur_address || ""} onChange={(e) => handleHeaderChange("collaborateur_address", e.target.value)} className="input-md" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Date début</label>
+            <input type="date" value={header.date_debut || ""} onChange={(e) => handleHeaderChange("date_debut", e.target.value)} className="input-md" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Date fin</label>
+            <input type="date" value={header.date_fin || ""} onChange={(e) => handleHeaderChange("date_fin", e.target.value)} className="input-md" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Mois</label>
+            <input type="month" value={header.mois || ""} onChange={(e) => handleHeaderChange("mois", e.target.value)} className="input-md" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Mission</label>
+            <select value={header.mission_id || ""} onChange={(e) => handleHeaderChange("mission_id", e.target.value)} disabled={loadingMissions} className="input-md">
               <option value="">-- Sélectionner --</option>
               {missions.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.subject}
-                </option>
+                <option key={m.id} value={m.id}>{m.subject}</option>
               ))}
             </select>
-            {loadingMissions && (
-              <span style={{ color: "#94a3b8", fontSize: "11px" }}>
-                Chargement des missions...
-              </span>
-            )}
-          </Field>
-          <Field>
-            <label>Client</label>
-            <select
-              value={header.client_id || ""}
-              onChange={(e) => handleHeaderChange("client_id", e.target.value)}
-            >
+            {loadingMissions && <span className="text-xs text-app-tertiary">Chargement des missions...</span>}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Client</label>
+            <select value={header.client_id || ""} onChange={(e) => handleHeaderChange("client_id", e.target.value)} className="input-md">
               <option value="">-- Sélectionner --</option>
               {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
+                <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
-          </Field>
-          <Field>
-            <label>Taux TVA (%)</label>
-            <input
-              type="number"
-              step="0.01"
-              value={header.taux_tva || 0}
-              onChange={(e) =>
-                handleHeaderChange("taux_tva", parseFloat(e.target.value) || 0)
-              }
-            />
-          </Field>
-          <Field>
-            <label>Avance</label>
-            <input
-              type="number"
-              value={header.avance || 0}
-              onChange={(e) =>
-                handleHeaderChange("avance", parseFloat(e.target.value) || 0)
-              }
-            />
-          </Field>
-          <Field>
-            <label>Modalité de règlement</label>
-            <select
-              value={header.modalite_reglement || "Chèque"}
-              onChange={(e) =>
-                handleHeaderChange("modalite_reglement", e.target.value)
-              }
-            >
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Taux TVA (%)</label>
+            <input type="number" step="0.01" value={header.taux_tva || 0} onChange={(e) => handleHeaderChange("taux_tva", parseFloat(e.target.value) || 0)} className="input-md" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Avance</label>
+            <input type="number" value={header.avance || 0} onChange={(e) => handleHeaderChange("avance", parseFloat(e.target.value) || 0)} className="input-md" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Modalité de règlement</label>
+            <select value={header.modalite_reglement || "Chèque"} onChange={(e) => handleHeaderChange("modalite_reglement", e.target.value)} className="input-md">
               <option value="Chèque">Chèque</option>
               <option value="Virement">Virement</option>
               <option value="Espèce">Espèce</option>
             </select>
-          </Field>
-          <Field>
-            <label>Statut</label>
-            <select
-              value={header.status || "brouillon"}
-              onChange={(e) => handleHeaderChange("status", e.target.value)}
-            >
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Statut</label>
+            <select value={header.status || "brouillon"} onChange={(e) => handleHeaderChange("status", e.target.value)} className="input-md">
               <option value="brouillon">Brouillon</option>
               <option value="soumis">Soumis</option>
               <option value="valide">Validé</option>
               <option value="rejete">Rejeté</option>
               <option value="rembourse">Remboursé</option>
             </select>
-          </Field>
-        </Grid>
+          </div>
+        </div>
 
-        <h4 style={{ color: "#94a3b8", marginTop: "12px" }}>Lignes de frais</h4>
-        <LineTableWrapper>
-          <LineTable>
+        <h4 className="mt-2 text-sm font-semibold text-app-secondary">Lignes de frais</h4>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
             <thead>
-              <tr>
-                <th style={{ width: "120px" }}>Date</th>
-                <th>Désignation</th>
-                <th style={{ width: "70px" }}>Qté</th>
-                <th style={{ width: "80px" }}>Devise</th>
-                <th style={{ width: "100px" }}>Montant HT</th>
-                <th style={{ width: "80px" }}>TVA</th>
-                <th style={{ width: "100px" }}>Net HT</th>
-                <th style={{ width: "60px" }}></th>
+              <tr className="bg-app-tertiary text-app-tertiary">
+                <th className="px-2 py-1.5 text-left text-2xs font-semibold uppercase" style={{ width: "120px" }}>Date</th>
+                <th className="px-2 py-1.5 text-left text-2xs font-semibold uppercase">Désignation</th>
+                <th className="px-2 py-1.5 text-left text-2xs font-semibold uppercase" style={{ width: "70px" }}>Qté</th>
+                <th className="px-2 py-1.5 text-left text-2xs font-semibold uppercase" style={{ width: "80px" }}>Devise</th>
+                <th className="px-2 py-1.5 text-left text-2xs font-semibold uppercase" style={{ width: "100px" }}>Montant HT</th>
+                <th className="px-2 py-1.5 text-left text-2xs font-semibold uppercase" style={{ width: "80px" }}>TVA</th>
+                <th className="px-2 py-1.5 text-left text-2xs font-semibold uppercase" style={{ width: "100px" }}>Net HT</th>
+                <th className="px-2 py-1.5" style={{ width: "50px" }}></th>
               </tr>
             </thead>
             <tbody>
               {lines.map((line, idx) => (
-                <tr key={idx}>
-                  <td>
-                    <input
-                      type="date"
-                      value={line.date || ""}
-                      onChange={(e) => updateLine(idx, "date", e.target.value)}
-                    />
+                <tr key={idx} className="border-b border-app">
+                  <td className="px-2 py-1.5">
+                    <input type="date" value={line.date || ""} onChange={(e) => updateLine(idx, "date", e.target.value)} className="w-full bg-transparent border-none text-app-primary px-1 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500" />
                   </td>
-                  <td>
-                    <select
-                      value={line.designation}
-                      onChange={(e) =>
-                        updateLine(idx, "designation", e.target.value)
-                      }
-                      style={{ width: "100%" }}
-                    >
+                  <td className="px-2 py-1.5">
+                    <select value={line.designation} onChange={(e) => updateLine(idx, "designation", e.target.value)} className="w-full bg-transparent border-none text-app-primary px-1 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500">
                       <option value="">-- Sélectionner --</option>
                       {DESIGNATIONS.map((d) => (
-                        <option key={d} value={d}>
-                          {d}
-                        </option>
+                        <option key={d} value={d}>{d}</option>
                       ))}
                       <option value="autre">Autre...</option>
                     </select>
                     {line.designation === "autre" && (
-                      <input
-                        type="text"
-                        placeholder="Saisir une autre désignation"
-                        value={
-                          line.designation === "autre" ? "" : line.designation
-                        }
-                        onChange={(e) =>
-                          updateLine(idx, "designation", e.target.value)
-                        }
-                        style={{ marginTop: "2px" }}
-                      />
+                      <input type="text" placeholder="Saisir une autre désignation" value="" onChange={(e) => updateLine(idx, "designation", e.target.value)} className="mt-0.5 w-full bg-transparent border-none text-app-primary px-1 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500" />
                     )}
                   </td>
-                  <td>
-                    <input
-                      type="number"
-                      step="1"
-                      min="1"
-                      value={line.quantite}
-                      onChange={(e) =>
-                        updateLine(
-                          idx,
-                          "quantite",
-                          parseFloat(e.target.value) || 0,
-                        )
-                      }
-                    />
+                  <td className="px-2 py-1.5">
+                    <input type="number" step="1" min="1" value={line.quantite} onChange={(e) => updateLine(idx, "quantite", parseFloat(e.target.value) || 0)} className="w-full bg-transparent border-none text-app-primary px-1 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500" />
                   </td>
-                  <td>
-                    <input
-                      value={line.devise}
-                      onChange={(e) =>
-                        updateLine(idx, "devise", e.target.value)
-                      }
-                      style={{ width: "70px" }}
-                    />
+                  <td className="px-2 py-1.5">
+                    <input value={line.devise} onChange={(e) => updateLine(idx, "devise", e.target.value)} className="w-[70px] bg-transparent border-none text-app-primary px-1 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500" />
                   </td>
-                  <td>
-                    <input
-                      type="number"
-                      step="1"
-                      min="0"
-                      value={line.montant_ht}
-                      onChange={(e) =>
-                        updateLine(
-                          idx,
-                          "montant_ht",
-                          parseFloat(e.target.value) || 0,
-                        )
-                      }
-                    />
+                  <td className="px-2 py-1.5">
+                    <input type="number" step="1" min="0" value={line.montant_ht} onChange={(e) => updateLine(idx, "montant_ht", parseFloat(e.target.value) || 0)} className="w-full bg-transparent border-none text-app-primary px-1 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500" />
                   </td>
-                  <td>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={line.tva || 0}
-                      onChange={(e) =>
-                        updateLine(idx, "tva", parseFloat(e.target.value) || 0)
-                      }
-                    />
+                  <td className="px-2 py-1.5">
+                    <input type="number" step="0.01" value={line.tva || 0} onChange={(e) => updateLine(idx, "tva", parseFloat(e.target.value) || 0)} className="w-full bg-transparent border-none text-app-primary px-1 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500" />
                   </td>
-                  <td>{(line.quantite * line.montant_ht).toFixed(0)}</td>
-                  <td>
-                    <Button
-                      variant="danger"
-                      type="button"
-                      onClick={() => removeLine(idx)}
-                    >
-                      <i className="fas fa-trash"></i>
-                    </Button>
+                  <td className="px-2 py-1.5 text-app-primary text-right">{(line.quantite * line.montant_ht).toFixed(0)}</td>
+                  <td className="px-2 py-1.5">
+                    <button type="button" onClick={() => removeLine(idx)} className="btn-danger btn-sm">
+                      <Trash2 className="h-3 w-3" />
+                    </button>
                   </td>
                 </tr>
               ))}
             </tbody>
-          </LineTable>
-        </LineTableWrapper>
-        <Button variant="secondary" type="button" onClick={addLine}>
-          <i className="fas fa-plus"></i> Ajouter une ligne
-        </Button>
+          </table>
+        </div>
+        <button type="button" onClick={addLine} className="btn-secondary btn-sm self-start">
+          <Plus className="h-3.5 w-3.5" /> Ajouter une ligne
+        </button>
 
-        <TotalRow>
-          <div className="total-item">
-            <span>Total HT</span>
-            <span>{total_ht.toFixed(0)} FCFA</span>
-          </div>
-          <div className="total-item">
-            <span>Montant TVA</span>
-            <span>{total_tva.toFixed(0)} FCFA</span>
-          </div>
-          <div className="total-item">
-            <span>Montant TTC</span>
-            <span>{total_ttc.toFixed(0)} FCFA</span>
-          </div>
-          <div className="total-item">
-            <span>Total NDF</span>
-            <span>{total_ttc.toFixed(0)} FCFA</span>
-          </div>
-          <div className="total-item">
-            <span>Net à payer</span>
-            <span>{net_a_payer.toFixed(0)} FCFA</span>
-          </div>
-        </TotalRow>
+        <div className="flex flex-wrap justify-end gap-8 border-t-2 border-app pt-3 mt-2">
+          {totals.map((t) => (
+            <div key={t.label} className="flex flex-col items-end">
+              <span className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">{t.label}</span>
+              <span className="text-lg font-bold text-app-primary">{t.value.toFixed(0)} FCFA</span>
+            </div>
+          ))}
+        </div>
 
-        <SignatureSection>
-          <label>
-            <input
-              type="checkbox"
-              checked={header.signature || false}
-              onChange={(e) =>
-                handleHeaderChange("signature", e.target.checked)
-              }
-            />
+        <div className="flex items-center gap-5">
+          <label className="flex items-center gap-2 text-sm text-app-secondary cursor-pointer">
+            <input type="checkbox" checked={header.signature || false} onChange={(e) => handleHeaderChange("signature", e.target.checked)} className="h-[18px] w-[18px] accent-primary-500" />
             Signature du collaborateur
           </label>
-          <input
-            type="text"
-            placeholder="Nom du signataire"
-            value={header.collaborateur_name || ""}
-            onChange={(e) =>
-              handleHeaderChange("collaborateur_name", e.target.value)
-            }
-            style={{ flex: 1 }}
-          />
-        </SignatureSection>
+          <input type="text" placeholder="Nom du signataire" value={header.collaborateur_name || ""} onChange={(e) => handleHeaderChange("collaborateur_name", e.target.value)} className="input-md flex-1" />
+        </div>
 
-        <ActionButtons>
-          <Button variant="secondary" type="button" onClick={onCancel}>
-            Annuler
-          </Button>
-          <Button variant="secondary" type="button" onClick={exportPDF}>
-            <i className="fas fa-file-pdf"></i> Exporter PDF
-          </Button>
-          <Button variant="primary" type="submit" disabled={loading}>
-            {loading
-              ? "Enregistrement..."
-              : reportId
-                ? "Mettre à jour"
-                : "Créer la note"}
-          </Button>
-        </ActionButtons>
-      </FormContainer>
+        <div className="flex justify-end gap-3">
+          <button type="button" onClick={onCancel} className="btn-secondary btn-md">Annuler</button>
+          <button type="button" onClick={exportPDF} className="btn-secondary btn-md">
+            <FileText className="h-4 w-4" /> Exporter PDF
+          </button>
+          <button type="submit" disabled={loading} className="btn-primary btn-md">
+            {loading ? "Enregistrement..." : reportId ? "Mettre à jour" : "Créer la note"}
+          </button>
+        </div>
+      </div>
     </form>
   );
 };
