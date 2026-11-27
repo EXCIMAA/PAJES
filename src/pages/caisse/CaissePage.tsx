@@ -1,6 +1,4 @@
-// src/pages/Caisse/CaissePage.tsx
 import React, { useEffect, useState } from "react";
-import styled from "styled-components";
 import { useTranslation } from "react-i18next";
 import { dbApi } from "../../lib/apiClient";
 import { addNotification } from "../../lib/notifications";
@@ -17,358 +15,13 @@ import {
   Plus,
   X,
   Printer,
+  RefreshCw,
+  Coins,
 } from "lucide-react";
-import { ProtectedAction } from "../../components/auth/ProtectedAction"; // ✅ ADDED
+import { ProtectedAction } from "../../components/auth/ProtectedAction";
+import { PageHeader } from "../../components/ui/PageHeader";
+import { cn } from "../../lib/utils";
 
-// ========== STYLES (unchanged) ==========
-const Container = styled.div`
-  padding: 24px;
-  color: #e2e8f0;
-  max-width: 1400px;
-  margin: 0 auto;
-`;
-
-const Header = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 28px;
-  h1 {
-    font-size: 2rem;
-    font-weight: 700;
-    color: #e2e8f0;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    svg {
-      color: #4facfe;
-    }
-  }
-`;
-
-const StatsGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
-  margin-bottom: 28px;
-`;
-
-const StatCard = styled.div<{ color?: string }>`
-  background: #1e293b;
-  border-radius: 12px;
-  padding: 20px;
-  border-left: 4px solid ${({ color }) => color || "#4facfe"};
-  .stat-value {
-    font-size: 24px;
-    font-weight: 700;
-    color: #e2e8f0;
-    margin-bottom: 4px;
-  }
-  .stat-label {
-    font-size: 11px;
-    color: #94a3b8;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .stat-sub {
-    font-size: 12px;
-    color: #94a3b8;
-    margin-top: 4px;
-  }
-`;
-
-const RecapWidget = styled.div`
-  background: #1e293b;
-  border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 28px;
-  border: 1px solid #334155;
-  .widget-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-    h3 {
-      color: #94a3b8;
-      font-size: 16px;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: #4facfe;
-    }
-  }
-`;
-
-const RecapTable = styled.table`
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-  th {
-    background: #1e3a5f;
-    color: #fff;
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 10px;
-    letter-spacing: 0.5px;
-    padding: 10px 12px;
-    border-bottom: 2px solid #2a4f7f;
-    text-align: left;
-    &:nth-child(3),
-    &:nth-child(4),
-    &:nth-child(5) {
-      text-align: right;
-    }
-  }
-  td {
-    padding: 8px 12px;
-    border-bottom: 1px solid #2d3748;
-    color: #e2e8f0;
-    vertical-align: middle;
-    &:nth-child(3),
-    &:nth-child(4),
-    &:nth-child(5) {
-      text-align: right;
-    }
-  }
-  .recette {
-    color: #86efac;
-  }
-  .depense {
-    color: #fca5a5;
-  }
-  .solde {
-    font-weight: 600;
-    color: #4facfe;
-  }
-  .total-row {
-    background: #0f172a;
-    font-weight: 600;
-    td {
-      border-top: 2px solid #4facfe;
-      padding-top: 12px;
-      color: #fff;
-    }
-    td:first-child {
-      color: #4facfe;
-    }
-  }
-`;
-
-const TypeSelector = styled.div`
-  display: flex;
-  gap: 12px;
-  margin-bottom: 24px;
-  button {
-    padding: 10px 24px;
-    border: none;
-    border-radius: 8px;
-    background: #1e293b;
-    color: #94a3b8;
-    font-weight: 600;
-    font-size: 14px;
-    cursor: pointer;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    &.active {
-      background: #1e3a5f;
-      color: #fff;
-      box-shadow: 0 4px 12px rgba(30, 58, 95, 0.4);
-    }
-    &:hover:not(.active) {
-      background: #334155;
-    }
-  }
-`;
-
-const FormContainer = styled.div`
-  background: #1e293b;
-  border-radius: 12px;
-  padding: 24px;
-  margin-bottom: 32px;
-  border: 1px solid #334155;
-`;
-
-const FormTitle = styled.h3`
-  color: #4facfe;
-  font-size: 16px;
-  margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-`;
-
-const Grid = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  @media (max-width: 768px) {
-    grid-template-columns: 1fr;
-  }
-`;
-
-const Field = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  label {
-    font-size: 12px;
-    color: #94a3b8;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-weight: 600;
-  }
-  input,
-  textarea {
-    padding: 8px 12px;
-    border: 1px solid #334155;
-    border-radius: 6px;
-    background: #0f172a;
-    color: #e2e8f0;
-    font-size: 13px;
-    transition: border-color 0.2s;
-    &:focus {
-      outline: none;
-      border-color: #4facfe;
-    }
-  }
-  textarea {
-    resize: vertical;
-    min-height: 60px;
-  }
-`;
-
-const CheckboxGroup = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
-  padding-top: 8px;
-  label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    color: #94a3b8;
-    cursor: pointer;
-    input[type="checkbox"] {
-      width: 18px;
-      height: 18px;
-      accent-color: #4facfe;
-      cursor: pointer;
-    }
-  }
-`;
-
-const Button = styled.button<{ variant?: "primary" | "secondary" | "danger" }>`
-  padding: 8px 20px;
-  border: none;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  ${({ variant }) => {
-    switch (variant) {
-      case "primary":
-        return "background: #1e3a5f; color: #fff; &:hover { background: #2a4f7f; }";
-      case "secondary":
-        return "background: #334155; color: #e2e8f0; &:hover { background: #475569; }";
-      case "danger":
-        return "background: #dc2626; color: #fff; &:hover { background: #b91c1c; }";
-      default:
-        return "background: #1e293b; color: #e2e8f0; &:hover { background: #334155; }";
-    }
-  }}
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-`;
-
-const FormActions = styled.div`
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid #334155;
-`;
-
-const TableWrapper = styled.div`
-  overflow-x: auto;
-  margin-top: 16px;
-  background: #1e293b;
-  border-radius: 12px;
-  padding: 16px;
-`;
-
-const StyledTable = styled.table`
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-  th,
-  td {
-    padding: 10px 12px;
-    border-bottom: 1px solid #2d3748;
-    text-align: left;
-    vertical-align: middle;
-  }
-  th {
-    color: #94a3b8;
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 10px;
-    letter-spacing: 0.5px;
-    border-bottom: 2px solid #334155;
-  }
-  td {
-    color: #e2e8f0;
-  }
-`;
-
-const Badge = styled.span<{ type: string }>`
-  display: inline-block;
-  padding: 3px 12px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 600;
-  ${({ type }) =>
-    type === "DEPENSE"
-      ? "background: #7f1d1d; color: #fca5a5;"
-      : "background: #14532d; color: #86efac;"}
-`;
-
-const SignatureBadge = styled.span<{ signed: boolean }>`
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 600;
-  ${({ signed }) =>
-    signed
-      ? "background: #14532d; color: #86efac;"
-      : "background: #475569; color: #94a3b8;"}
-`;
-
-const EmptyState = styled.div`
-  text-align: center;
-  padding: 40px 20px;
-  color: #94a3b8;
-  svg {
-    margin-bottom: 12px;
-    opacity: 0.5;
-  }
-  p {
-    font-size: 14px;
-  }
-`;
-
-// ========== COMPOSANT PRINCIPAL ==========
 export const CaissePage: React.FC = () => {
   const { t } = useTranslation();
   const { notify } = useNotification();
@@ -756,194 +409,187 @@ export const CaissePage: React.FC = () => {
   const nbDepenses = pieces.filter((p) => p.type === "DEPENSE").length;
   const nbAppros = pieces.filter((p) => p.type === "APPROVISIONNEMENT").length;
 
+  const stats = [
+    { label: "Total pièces", value: String(nbPieces), accent: "text-primary-600 dark:text-primary-400", border: "border-l-primary-500" },
+    { label: "Total dépenses", value: `${totalDepenses.toLocaleString()} FCFA`, accent: "text-warning-600 dark:text-warning-500", border: "border-l-warning-500" },
+    { label: "Total approvisionnements", value: `${totalRecettes.toLocaleString()} FCFA`, accent: "text-success-600 dark:text-success-500", border: "border-l-success-500" },
+    { label: "Solde général", value: `${soldeGeneral.toLocaleString()} FCFA`, accent: "text-cyan-600 dark:text-cyan-400", border: "border-l-cyan-500", sub: `Dépenses: ${nbDepenses} | Appro.: ${nbAppros}` },
+  ];
+
   return (
-    <Container>
-      <Header>
-        <h1>
-          <Wallet size={32} />
-          CAISSE
-        </h1>
-      </Header>
+    <div className="page-container">
+      <PageHeader
+        title="Caisse"
+        description="Gestion des espèces : dépenses, approvisionnements et récapitulatif de la caisse du cabinet."
+        actions={
+          <button onClick={loadData} disabled={loading} className="btn-secondary btn-md">
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            {loading ? "Chargement..." : "Rafraîchir"}
+          </button>
+        }
+      />
 
-      <StatsGrid>
-        <StatCard color="#4facfe">
-          <div className="stat-value">{nbPieces}</div>
-          <div className="stat-label">Total pièces</div>
-        </StatCard>
-        <StatCard color="#f59e0b">
-          <div className="stat-value">
-            {totalDepenses.toLocaleString()} FCFA
+      {/* Stats */}
+      <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 xl:grid-cols-4">
+        {stats.map((s) => (
+          <div key={s.label} className={cn("card p-5 border-l-4", s.border)}>
+            <p className="text-2xl font-bold text-app-primary">{s.value}</p>
+            <p className="mt-1 text-2xs font-semibold uppercase tracking-wide text-app-tertiary">{s.label}</p>
+            {s.sub && <p className="mt-1 text-xs text-app-secondary">{s.sub}</p>}
           </div>
-          <div className="stat-label">Total dépenses</div>
-        </StatCard>
-        <StatCard color="#8b5cf6">
-          <div className="stat-value">
-            {totalRecettes.toLocaleString()} FCFA
-          </div>
-          <div className="stat-label">Total approvisionnements</div>
-        </StatCard>
-        <StatCard color="#10b981">
-          <div className="stat-value">{soldeGeneral.toLocaleString()} FCFA</div>
-          <div className="stat-label">Solde général</div>
-          <div className="stat-sub">
-            Dépenses: {nbDepenses} | Appro.: {nbAppros}
-          </div>
-        </StatCard>
-      </StatsGrid>
+        ))}
+      </div>
 
-      <RecapWidget>
-        <div className="widget-header">
-          <h3>
-            <FileText size={18} />
+      {/* Récapitulatif */}
+      <div className="card p-5 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-app-primary">
+            <FileText className="h-4 w-4 text-primary-600 dark:text-primary-400" />
             Récapitulatif général
           </h3>
-          {/* ✅ WRAPPED: Exporter PDF récapitulatif (view) */}
           <ProtectedAction module="caisse" action="view">
-            <Button
-              variant="secondary"
+            <button
               onClick={exportRecapPDF}
               disabled={exportingRecap || recapData.rows.length === 0}
+              className="btn-secondary btn-sm"
             >
-              <Printer size={16} />
+              <Printer className="h-3.5 w-3.5" />
               {exportingRecap ? "..." : "Exporter PDF récapitulatif"}
-            </Button>
+            </button>
           </ProtectedAction>
         </div>
         {recapData.rows.length === 0 ? (
-          <EmptyState>
-            <FileText size={48} />
-            <p>Aucune pièce enregistrée.</p>
-          </EmptyState>
+          <div className="py-12 text-center">
+            <FileText className="mx-auto mb-3 h-10 w-10 text-app-tertiary opacity-50" />
+            <p className="text-sm text-app-secondary">Aucune pièce enregistrée.</p>
+          </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <RecapTable>
+          <div className="overflow-x-auto rounded-lg border border-app">
+            <table className="w-full text-sm">
               <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Description</th>
-                  <th>Recettes</th>
-                  <th>Dépenses</th>
-                  <th>Solde</th>
-                  <th>Tiers</th>
+                <tr className="bg-app-tertiary text-app-secondary">
+                  <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Date</th>
+                  <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Description</th>
+                  <th className="px-3 py-2.5 text-right text-2xs font-semibold uppercase tracking-wide">Recettes</th>
+                  <th className="px-3 py-2.5 text-right text-2xs font-semibold uppercase tracking-wide">Dépenses</th>
+                  <th className="px-3 py-2.5 text-right text-2xs font-semibold uppercase tracking-wide">Solde</th>
+                  <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Tiers</th>
                 </tr>
               </thead>
               <tbody>
                 {recapData.rows.map((r, idx) => (
-                  <tr key={idx}>
-                    <td>{format(new Date(r.date), "dd/MM/yyyy")}</td>
-                    <td>{r.description}</td>
-                    <td>
+                  <tr key={idx} className="border-t border-app">
+                    <td className="px-3 py-2 text-app-primary whitespace-nowrap">{format(new Date(r.date), "dd/MM/yyyy")}</td>
+                    <td className="px-3 py-2 text-app-primary">{r.description}</td>
+                    <td className="px-3 py-2 text-right">
                       {r.recette > 0 ? (
-                        <span className="recette">
-                          {r.recette.toLocaleString()}
-                        </span>
+                        <span className="text-success-600 dark:text-success-400 font-medium">{r.recette.toLocaleString()}</span>
                       ) : (
-                        "-"
+                        <span className="text-app-tertiary">-</span>
                       )}
                     </td>
-                    <td>
+                    <td className="px-3 py-2 text-right">
                       {r.depense > 0 ? (
-                        <span className="depense">
-                          {r.depense.toLocaleString()}
-                        </span>
+                        <span className="text-error-600 dark:text-error-400 font-medium">{r.depense.toLocaleString()}</span>
                       ) : (
-                        "-"
+                        <span className="text-app-tertiary">-</span>
                       )}
                     </td>
-                    <td className="solde">{r.solde.toLocaleString()}</td>
-                    <td>{r.tier}</td>
+                    <td className="px-3 py-2 text-right font-semibold text-primary-600 dark:text-primary-400">{r.solde.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-app-secondary">{r.tier}</td>
                   </tr>
                 ))}
-                <tr className="total-row">
-                  <td colSpan={2} style={{ textAlign: "right" }}>
-                    TOTAUX
-                  </td>
-                  <td style={{ textAlign: "right", color: "#86efac" }}>
-                    {recapData.totalRecettes.toLocaleString()}
-                  </td>
-                  <td style={{ textAlign: "right", color: "#fca5a5" }}>
-                    {recapData.totalDepenses.toLocaleString()}
-                  </td>
-                  <td
-                    style={{
-                      textAlign: "right",
-                      fontWeight: 700,
-                      color: "#4facfe",
-                    }}
-                  >
-                    {recapData.soldeFinal.toLocaleString()}
-                  </td>
-                  <td></td>
+                <tr className="border-t-2 border-primary-500 bg-app-tertiary font-semibold">
+                  <td colSpan={2} className="px-3 py-3 text-right text-primary-600 dark:text-primary-400">TOTAUX</td>
+                  <td className="px-3 py-3 text-right text-success-600 dark:text-success-400">{recapData.totalRecettes.toLocaleString()}</td>
+                  <td className="px-3 py-3 text-right text-error-600 dark:text-error-400">{recapData.totalDepenses.toLocaleString()}</td>
+                  <td className="px-3 py-3 text-right font-bold text-primary-600 dark:text-primary-400">{recapData.soldeFinal.toLocaleString()}</td>
+                  <td className="px-3 py-3"></td>
                 </tr>
               </tbody>
-            </RecapTable>
+            </table>
           </div>
         )}
-      </RecapWidget>
+      </div>
 
-      <TypeSelector>
+      {/* Type selector */}
+      <div className="flex gap-3 mb-5">
         <button
-          className={type === "DEPENSE" ? "active" : ""}
+          className={cn(
+            "flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold transition-all duration-200",
+            type === "DEPENSE"
+              ? "bg-primary-600 text-white shadow-lg shadow-primary-600/20"
+              : "bg-app-tertiary text-app-secondary hover:bg-app-elevated hover:text-app-primary",
+          )}
           onClick={() => setType("DEPENSE")}
         >
-          <TrendingDown size={18} />
+          <TrendingDown className="h-4 w-4" />
           Dépense
         </button>
         <button
-          className={type === "APPROVISIONNEMENT" ? "active" : ""}
+          className={cn(
+            "flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold transition-all duration-200",
+            type === "APPROVISIONNEMENT"
+              ? "bg-primary-600 text-white shadow-lg shadow-primary-600/20"
+              : "bg-app-tertiary text-app-secondary hover:bg-app-elevated hover:text-app-primary",
+          )}
           onClick={() => setType("APPROVISIONNEMENT")}
         >
-          <TrendingUp size={18} />
+          <TrendingUp className="h-4 w-4" />
           Approvisionnement
         </button>
-      </TypeSelector>
+      </div>
 
-      <FormContainer>
-        <FormTitle>
-          <Plus size={18} />
+      {/* Form */}
+      <div className="card p-6 mb-8">
+        <h3 className="flex items-center gap-2 mb-5 text-sm font-semibold text-primary-600 dark:text-primary-400">
+          <Plus className="h-4 w-4" />
           {type === "DEPENSE"
             ? "Nouvelle pièce de caisse DÉPENSE"
             : "Nouvelle pièce de caisse APPROVISIONNEMENT"}
-        </FormTitle>
+        </h3>
         <form onSubmit={handleSubmit}>
-          <Grid>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {type === "DEPENSE" ? (
               <>
-                <Field>
-                  <label>Destinataire *</label>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Destinataire *</label>
                   <input
                     name="destinataire"
                     value={form.destinataire}
                     onChange={handleChange}
                     placeholder="Nom du destinataire"
+                    className="input-md"
                     required
                   />
-                </Field>
-                <Field>
-                  <label>Motif</label>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Motif</label>
                   <input
                     name="motif"
                     value={form.motif}
                     onChange={handleChange}
                     placeholder="Motif de la dépense"
+                    className="input-md"
                   />
-                </Field>
+                </div>
               </>
             ) : (
-              <Field>
-                <label>Reçu de M/Mme *</label>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Reçu de M/Mme *</label>
                 <input
                   name="recu_de"
                   value={form.recu_de}
                   onChange={handleChange}
                   placeholder="Nom complet"
+                  className="input-md"
                   required
                 />
-              </Field>
+              </div>
             )}
 
-            <Field>
-              <label>La somme de (montant) *</label>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">La somme de (montant) *</label>
               <input
                 name="somme"
                 type="number"
@@ -951,77 +597,74 @@ export const CaissePage: React.FC = () => {
                 value={form.somme}
                 onChange={handleChange}
                 placeholder="0"
+                className="input-md"
                 required
               />
-            </Field>
-            <Field>
-              <label>Fait à (lieu) *</label>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Fait à (lieu) *</label>
               <input
                 name="lieu"
                 value={form.lieu}
                 onChange={handleChange}
                 placeholder="Douala, Yaoundé..."
+                className="input-md"
                 required
               />
-            </Field>
-            <Field>
-              <label>Le (date) *</label>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Le (date) *</label>
               <input
                 name="date_piece"
                 type="date"
                 value={form.date_piece}
                 onChange={handleChange}
+                className="input-md"
                 required
               />
-            </Field>
-          </Grid>
+            </div>
+          </div>
 
-          <div style={{ marginTop: "12px" }}>
-            <label
-              style={{
-                fontSize: "12px",
-                color: "#94a3b8",
-                textTransform: "uppercase",
-              }}
-            >
-              Signatures
-            </label>
-            <CheckboxGroup>
-              <label>
+          <div className="mt-4">
+            <label className="text-2xs font-semibold uppercase tracking-wide text-app-tertiary">Signatures</label>
+            <div className="mt-2 flex flex-wrap gap-5">
+              <label className="flex items-center gap-2 text-sm text-app-secondary cursor-pointer">
                 <input
                   type="checkbox"
                   name="signature_dg"
                   checked={form.signature_dg}
                   onChange={handleChange}
+                  className="h-[18px] w-[18px] accent-primary-500 cursor-pointer"
                 />
                 Direction Générale
               </label>
-              <label>
+              <label className="flex items-center gap-2 text-sm text-app-secondary cursor-pointer">
                 <input
                   type="checkbox"
                   name="signature_caisse"
                   checked={form.signature_caisse}
                   onChange={handleChange}
+                  className="h-[18px] w-[18px] accent-primary-500 cursor-pointer"
                 />
                 Caisse
               </label>
               {type === "DEPENSE" && (
-                <label>
+                <label className="flex items-center gap-2 text-sm text-app-secondary cursor-pointer">
                   <input
                     type="checkbox"
                     name="signature_beneficiaire"
                     checked={form.signature_beneficiaire}
                     onChange={handleChange}
+                    className="h-[18px] w-[18px] accent-primary-500 cursor-pointer"
                   />
                   Bénéficiaire
                 </label>
               )}
-            </CheckboxGroup>
+            </div>
           </div>
 
-          <FormActions>
-            <Button
-              variant="secondary"
+          <div className="mt-4 flex justify-end gap-3 border-t border-app pt-4">
+            <button
               type="button"
               onClick={() => {
                 setForm({
@@ -1036,130 +679,131 @@ export const CaissePage: React.FC = () => {
                   signature_beneficiaire: false,
                 });
               }}
+              className="btn-secondary btn-md"
             >
-              <X size={16} /> Réinitialiser
-            </Button>
-            {/* ✅ WRAPPED: Enregistrer (create) */}
+              <X className="h-4 w-4" /> Réinitialiser
+            </button>
             <ProtectedAction module="caisse" action="create">
-              <Button variant="primary" type="submit" disabled={submitting}>
+              <button type="submit" disabled={submitting} className="btn-primary btn-md">
                 {submitting ? "Enregistrement..." : "Enregistrer"}
-              </Button>
+              </button>
             </ProtectedAction>
-          </FormActions>
+          </div>
         </form>
-      </FormContainer>
+      </div>
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginTop: "32px",
-          marginBottom: "12px",
-        }}
-      >
-        <h3 style={{ color: "#94a3b8", fontSize: "16px", fontWeight: "600" }}>
-          📋 Historique des pièces
+      {/* History */}
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-app-secondary">
+          <Coins className="h-4 w-4" />
+          Historique des pièces
         </h3>
-        <Button variant="secondary" onClick={loadData} disabled={loading}>
-          {loading ? "Chargement..." : "Rafraîchir"}
-        </Button>
       </div>
 
       {loading ? (
-        <div style={{ color: "#94a3b8", textAlign: "center", padding: "40px" }}>
-          Chargement...
+        <div className="card p-10 text-center text-sm text-app-secondary">Chargement...</div>
+      ) : pieces.length === 0 ? (
+        <div className="card py-12 text-center">
+          <FileText className="mx-auto mb-3 h-10 w-10 text-app-tertiary opacity-50" />
+          <p className="text-sm text-app-secondary">Aucune pièce enregistrée.</p>
         </div>
       ) : (
-        <TableWrapper>
-          {pieces.length === 0 ? (
-            <EmptyState>
-              <FileText size={48} />
-              <p>Aucune pièce enregistrée.</p>
-            </EmptyState>
-          ) : (
-            <StyledTable>
-              <thead>
-                <tr>
-                  <th>Type</th>
-                  <th>Destinataire / Reçu de</th>
-                  <th>Montant</th>
-                  <th>Lieu</th>
-                  <th>Date</th>
-                  <th>Signatures</th>
-                  <th style={{ textAlign: "center" }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pieces.map((p) => (
-                  <tr key={p.id}>
-                    <td>
-                      <Badge type={p.type}>{p.type}</Badge>
-                    </td>
-                    <td>{p.destinataire || p.recu_de || "-"}</td>
-                    <td>{p.somme.toLocaleString()} FCFA</td>
-                    <td>{p.lieu}</td>
-                    <td>{format(new Date(p.date_piece), "dd/MM/yyyy")}</td>
-                    <td>
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "4px",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <SignatureBadge signed={p.signature_dg}>
-                          DG
-                        </SignatureBadge>
-                        <SignatureBadge signed={p.signature_caisse}>
-                          Caisse
-                        </SignatureBadge>
-                        {p.type === "DEPENSE" && (
-                          <SignatureBadge signed={p.signature_beneficiaire}>
-                            Bénéf.
-                          </SignatureBadge>
+        <div className="card overflow-x-auto p-4">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b-2 border-app text-app-tertiary">
+                <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Type</th>
+                <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Destinataire / Reçu de</th>
+                <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Montant</th>
+                <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Lieu</th>
+                <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Date</th>
+                <th className="px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wide">Signatures</th>
+                <th className="px-3 py-2.5 text-center text-2xs font-semibold uppercase tracking-wide">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pieces.map((p) => (
+                <tr key={p.id} className="border-b border-app">
+                  <td className="px-3 py-2.5">
+                    <span
+                      className={cn(
+                        "badge",
+                        p.type === "DEPENSE"
+                          ? "bg-error-500/15 text-error-600 dark:text-error-400 ring-1 ring-error-500/25"
+                          : "bg-success-500/15 text-success-600 dark:text-success-400 ring-1 ring-success-500/25",
+                      )}
+                    >
+                      {p.type}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5 text-app-primary">{p.destinataire || p.recu_de || "-"}</td>
+                  <td className="px-3 py-2.5 text-app-primary whitespace-nowrap">{p.somme.toLocaleString()} FCFA</td>
+                  <td className="px-3 py-2.5 text-app-secondary">{p.lieu}</td>
+                  <td className="px-3 py-2.5 text-app-secondary whitespace-nowrap">{format(new Date(p.date_piece), "dd/MM/yyyy")}</td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex flex-wrap gap-1">
+                      <span
+                        className={cn(
+                          "rounded px-1.5 py-0.5 text-2xs font-semibold",
+                          p.signature_dg
+                            ? "bg-success-500/15 text-success-600 dark:text-success-400"
+                            : "bg-app-tertiary text-app-tertiary",
                         )}
-                      </div>
-                    </td>
-                    <td style={{ textAlign: "center" }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "6px",
-                          justifyContent: "center",
-                        }}
                       >
-                        {/* ✅ WRAPPED: Export PDF (view) */}
-                        <ProtectedAction module="caisse" action="view">
-                          <Button
-                            variant="secondary"
-                            onClick={() => exportPDF(p)}
-                            disabled={exportingId === p.id}
-                            style={{ padding: "4px 10px", fontSize: "11px" }}
-                          >
-                            <Download size={14} />
-                            {exportingId === p.id ? "..." : "PDF"}
-                          </Button>
-                        </ProtectedAction>
-                        {/* ✅ WRAPPED: Delete */}
-                        <ProtectedAction module="caisse" action="delete">
-                          <Button
-                            variant="danger"
-                            onClick={() => handleDelete(p.id)}
-                            style={{ padding: "4px 10px", fontSize: "11px" }}
-                          >
-                            <X size={14} />
-                          </Button>
-                        </ProtectedAction>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </StyledTable>
-          )}
-        </TableWrapper>
+                        DG
+                      </span>
+                      <span
+                        className={cn(
+                          "rounded px-1.5 py-0.5 text-2xs font-semibold",
+                          p.signature_caisse
+                            ? "bg-success-500/15 text-success-600 dark:text-success-400"
+                            : "bg-app-tertiary text-app-tertiary",
+                        )}
+                      >
+                        Caisse
+                      </span>
+                      {p.type === "DEPENSE" && (
+                        <span
+                          className={cn(
+                            "rounded px-1.5 py-0.5 text-2xs font-semibold",
+                            p.signature_beneficiaire
+                              ? "bg-success-500/15 text-success-600 dark:text-success-400"
+                              : "bg-app-tertiary text-app-tertiary",
+                          )}
+                        >
+                          Bénéf.
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex justify-center gap-2">
+                      <ProtectedAction module="caisse" action="view">
+                        <button
+                          onClick={() => exportPDF(p)}
+                          disabled={exportingId === p.id}
+                          className="btn-secondary btn-sm"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          {exportingId === p.id ? "..." : "PDF"}
+                        </button>
+                      </ProtectedAction>
+                      <ProtectedAction module="caisse" action="delete">
+                        <button
+                          onClick={() => handleDelete(p.id)}
+                          className="btn-danger btn-sm"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </ProtectedAction>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
-    </Container>
+    </div>
   );
 };

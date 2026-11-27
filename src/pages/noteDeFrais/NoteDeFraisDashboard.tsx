@@ -1,78 +1,20 @@
-// src/pages/NoteDeFrais/NoteDeFraisDashboard.tsx
+// src/pages/noteDeFrais/NoteDeFraisDashboard.tsx
 import React, { useState, useEffect } from "react";
-import styled from "styled-components";
+import { ClipboardList, List, FilePlus2, Loader2 } from "lucide-react";
 import { dbApi } from "../../lib/apiClient";
 import { NoteDeFraisForm } from "./NoteDeFraisForm";
 import { NoteDeFraisList } from "./NoteDeFraisList";
 import { addNotification } from "../../lib/notifications";
+import { PageHeader } from "../../components/ui/PageHeader";
+import { cn } from "../../lib/utils";
 
-// ==================== STYLES ====================
-const Container = styled.div`
-  padding: 20px;
-`;
-
-const Header = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  h1 {
-    color: #e2e8f0;
-    font-size: 1.5rem;
-  }
-`;
-
-const Tabs = styled.div`
-  display: flex;
-  gap: 12px;
-  margin-bottom: 24px;
-  button {
-    background: transparent;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 6px;
-    color: #94a3b8;
-    font-weight: 600;
-    font-size: 14px;
-    cursor: pointer;
-    transition: all 0.2s;
-    &:hover {
-      background: #1e293b;
-      color: #e2e8f0;
-    }
-    &.active {
-      background: #1e293b;
-      color: #4facfe;
-    }
-  }
-`;
-
-const StatsGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
-`;
-
-const StatCard = styled.div<{ $color?: string }>`
-  background: #1e293b;
-  border-radius: 8px;
-  padding: 16px;
-  text-align: center;
-  border-left: 4px solid ${({ $color }) => $color || "#4facfe"};
-  .value {
-    font-size: 24px;
-    font-weight: 700;
-    color: #e2e8f0;
-  }
-  .label {
-    font-size: 12px;
-    color: #94a3b8;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-top: 4px;
-  }
-`;
+const STATUS_CONFIG: Record<string, { label: string; badge: string }> = {
+  brouillon: { label: "Brouillon", badge: "badge badge-neutral" },
+  soumis: { label: "Soumis", badge: "badge badge-warning" },
+  valide: { label: "Validé", badge: "badge badge-success" },
+  rejete: { label: "Rejeté", badge: "badge badge-error" },
+  rembourse: { label: "Remboursé", badge: "badge badge-neutral" },
+};
 
 // ==================== COMPOSANT PRINCIPAL ====================
 export const NoteDeFraisDashboard: React.FC = () => {
@@ -138,87 +80,103 @@ export const NoteDeFraisDashboard: React.FC = () => {
     setActiveTab("list");
   };
 
+  const tabs = [
+    { id: "dashboard" as const, label: "Tableau de bord", icon: ClipboardList },
+    { id: "list" as const, label: "Liste des notes", icon: List },
+    { id: "form" as const, label: editingId ? "Modifier" : "Nouvelle note", icon: FilePlus2 },
+  ];
+
   const renderStats = () => (
-    <StatsGrid>
-      <StatCard>
-        <div className="value">{stats.count}</div>
-        <div className="label">Nombre de notes</div>
-      </StatCard>
-      <StatCard>
-        <div className="value">{stats.total_ht.toFixed(0)} FCFA</div>
-        <div className="label">Total HT</div>
-      </StatCard>
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-4 mb-6">
+      <div className="card p-4 text-center border-l-4 border-l-primary-500">
+        <div className="text-2xl font-bold text-app-primary">{stats.count}</div>
+        <div className="mt-1 text-xs uppercase tracking-wide text-app-tertiary">
+          Nombre de notes
+        </div>
+      </div>
+      <div className="card p-4 text-center border-l-4 border-l-primary-500">
+        <div className="text-2xl font-bold text-app-primary">
+          {stats.total_ht.toFixed(0)} FCFA
+        </div>
+        <div className="mt-1 text-xs uppercase tracking-wide text-app-tertiary">
+          Total HT
+        </div>
+      </div>
       {Object.entries(stats.by_status).map(([status, total]) => {
-        const config = {
-          brouillon: { label: "Brouillon", color: "#475569" },
-          soumis: { label: "Soumis", color: "#fcd34d" },
-          valide: { label: "Validé", color: "#86efac" },
-          rejete: { label: "Rejeté", color: "#fca5a5" },
-          rembourse: { label: "Remboursé", color: "#94a3b8" },
-        }[status] || { label: status, color: "#4facfe" };
+        const config =
+          STATUS_CONFIG[status] || { label: status, badge: "badge badge-primary" };
         return (
-          <StatCard key={status} $color={config.color}>
-            <div className="value">{total.toFixed(0)} FCFA</div>
-            <div className="label">{config.label}</div>
-          </StatCard>
+          <div key={status} className="card p-4 text-center border-l-4 border-l-primary-500">
+            <div className="text-2xl font-bold text-app-primary">
+              {total.toFixed(0)} FCFA
+            </div>
+            <div className="mt-1">
+              <span className={config.badge}>{config.label}</span>
+            </div>
+          </div>
         );
       })}
-    </StatsGrid>
+    </div>
   );
 
   return (
-    <Container>
-      <Header>
-        <h1>📋 Notes de frais</h1>
-      </Header>
+    <div className="space-y-6">
+      <PageHeader title="Notes de frais" description="Suivi et statistiques des notes de frais." />
 
-      <Tabs>
-        <button
-          className={activeTab === "dashboard" ? "active" : ""}
-          onClick={() => setActiveTab("dashboard")}
-        >
-          Tableau de bord
-        </button>
-        <button
-          className={activeTab === "list" ? "active" : ""}
-          onClick={() => setActiveTab("list")}
-        >
-          Liste des notes
-        </button>
-        <button
-          className={activeTab === "form" ? "active" : ""}
-          onClick={() => {
-            setEditingId(undefined);
-            setActiveTab("form");
-          }}
-        >
-          {editingId ? "Modifier" : "Nouvelle note"}
-        </button>
-      </Tabs>
+      <div className="card p-5">
+        {/* Tabs */}
+        <div className="flex flex-wrap gap-3 mb-6">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  if (tab.id === "form") {
+                    setEditingId(undefined);
+                  }
+                  setActiveTab(tab.id);
+                }}
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition-colors",
+                  active
+                    ? "bg-app-tertiary text-primary-500"
+                    : "text-app-tertiary hover:bg-app-tertiary hover:text-app-primary",
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
 
-      {activeTab === "dashboard" && (
-        <>
-          {loadingStats ? (
-            <div style={{ color: "#94a3b8" }}>
-              Chargement des statistiques...
-            </div>
-          ) : (
-            renderStats()
-          )}
-        </>
-      )}
+        {activeTab === "dashboard" && (
+          <>
+            {loadingStats ? (
+              <div className="flex items-center gap-2 py-8 text-app-tertiary">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Chargement des statistiques...
+              </div>
+            ) : (
+              renderStats()
+            )}
+          </>
+        )}
 
-      {activeTab === "list" && (
-        <NoteDeFraisList onEdit={handleEdit} onRefresh={loadStats} />
-      )}
+        {activeTab === "list" && (
+          <NoteDeFraisList onEdit={handleEdit} onRefresh={loadStats} />
+        )}
 
-      {activeTab === "form" && (
-        <NoteDeFraisForm
-          reportId={editingId}
-          onSuccess={handleFormSuccess}
-          onCancel={handleCancelForm}
-        />
-      )}
-    </Container>
+        {activeTab === "form" && (
+          <NoteDeFraisForm
+            reportId={editingId}
+            onSuccess={handleFormSuccess}
+            onCancel={handleCancelForm}
+          />
+        )}
+      </div>
+    </div>
   );
 };

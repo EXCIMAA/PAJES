@@ -1,6 +1,5 @@
-// src/pages/Profile/ProfilePage.tsx
+// src/pages/profile/ProfilePage.tsx
 import React, { useEffect, useState } from "react";
-import styled from "styled-components";
 import { useAuth } from "../../contexts/AuthContext";
 import { dbApi } from "../../lib/apiClient";
 import {
@@ -12,80 +11,6 @@ import {
   Building,
   Loader2,
 } from "lucide-react";
-
-const Container = styled.div`
-  padding: 24px;
-  color: #e2e8f0;
-  max-width: 800px;
-  margin: 0 auto;
-`;
-
-const Card = styled.div`
-  background: #1e293b;
-  border-radius: 12px;
-  padding: 24px;
-  border: 1px solid #334155;
-`;
-
-const Title = styled.h1`
-  font-size: 24px;
-  font-weight: 700;
-  color: #e2e8f0;
-  margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-`;
-
-const InfoRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid #2d3748;
-  &:last-child {
-    border-bottom: none;
-  }
-  svg {
-    color: #4facfe;
-    width: 20px;
-    height: 20px;
-    flex-shrink: 0;
-  }
-  .label {
-    color: #94a3b8;
-    font-weight: 600;
-    width: 140px;
-    flex-shrink: 0;
-  }
-  .value {
-    color: #e2e8f0;
-    word-break: break-word;
-  }
-`;
-
-const Avatar = styled.div`
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  background: #2a4f7f;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 32px;
-  font-weight: 700;
-  color: #fff;
-  margin-bottom: 16px;
-`;
-
-const LoadingContainer = styled.div`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 40px;
-  gap: 12px;
-  color: #94a3b8;
-`;
 
 interface Profile {
   full_name: string;
@@ -134,99 +59,90 @@ export const ProfilePage: React.FC = () => {
 
   if (loading) {
     return (
-      <Container>
-        <LoadingContainer>
+      <div className="mx-auto max-w-[800px] p-6 text-app-primary">
+        <div className="flex items-center justify-center gap-3 p-10 text-app-tertiary">
           <Loader2 className="animate-spin" size={24} />
           Chargement du profil...
-        </LoadingContainer>
-      </Container>
+        </div>
+      </div>
     );
   }
 
   if (!profile) {
     return (
-      <Container>
-        <Card>
-          <p style={{ color: "#94a3b8" }}>
+      <div className="mx-auto max-w-[800px] p-6 text-app-primary">
+        <div className="card p-5">
+          <p className="text-app-tertiary">
             Aucun profil trouvé pour cet utilisateur.
           </p>
-        </Card>
-      </Container>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Container>
-      <Card>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "20px",
-            marginBottom: "20px",
-          }}
-        >
-          <Avatar>{getInitials(profile.full_name)}</Avatar>
+    <div className="mx-auto max-w-[800px] p-6 text-app-primary">
+      <div className="card p-5">
+        <div className="mb-5 flex items-center gap-5">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-app-tertiary mb-4 text-3xl font-bold text-app-primary">
+            {getInitials(profile.full_name)}
+          </div>
           <div>
-            <Title style={{ marginBottom: 0 }}>Mon profil</Title>
-            <p style={{ color: "#94a3b8", marginTop: "4px" }}>
+            <h1 className="text-2xl font-bold text-app-primary flex items-center gap-3">
+              Mon profil
+            </h1>
+            <p className="mt-1 text-app-tertiary">
               {profile.role || "Utilisateur"}
             </p>
           </div>
         </div>
 
-        <InfoRow>
-          <User size={18} />
-          <span className="label">Nom complet</span>
-          <span className="value">{profile.full_name || "Non renseigné"}</span>
-        </InfoRow>
-        <InfoRow>
-          <Mail size={18} />
-          <span className="label">Email</span>
-          <span className="value">{profile.email || "Non renseigné"}</span>
-        </InfoRow>
-        <InfoRow>
-          <Phone size={18} />
-          <span className="label">Téléphone</span>
-          <span className="value">{profile.phone || "Non renseigné"}</span>
-        </InfoRow>
-        <InfoRow>
-          <Building size={18} />
-          <span className="label">Département</span>
-          <span className="value">{profile.department || "Non renseigné"}</span>
-        </InfoRow>
-        <InfoRow>
-          <Shield size={18} />
-          <span className="label">Rôle</span>
-          <span className="value">{profile.role || "Utilisateur"}</span>
-        </InfoRow>
-        <InfoRow>
-          <Calendar size={18} />
-          <span className="label">Date d'embauche</span>
-          <span className="value">
-            {profile.hire_date
+        {[
+          { icon: User, label: "Nom complet", value: profile.full_name || "Non renseigné" },
+          { icon: Mail, label: "Email", value: profile.email || "Non renseigné" },
+          { icon: Phone, label: "Téléphone", value: profile.phone || "Non renseigné" },
+          { icon: Building, label: "Département", value: profile.department || "Non renseigné" },
+          { icon: Shield, label: "Rôle", value: profile.role || "Utilisateur" },
+          {
+            icon: Calendar,
+            label: "Date d'embauche",
+            value: profile.hire_date
               ? new Date(profile.hire_date).toLocaleDateString("fr-FR", {
                   year: "numeric",
                   month: "long",
                   day: "numeric",
                 })
-              : "Non renseignée"}
-          </span>
-        </InfoRow>
-        <InfoRow>
-          <Calendar size={18} />
-          <span className="label">Membre depuis</span>
-          <span className="value">
-            {profile.created_at
+              : "Non renseignée",
+          },
+          {
+            icon: Calendar,
+            label: "Membre depuis",
+            value: profile.created_at
               ? new Date(profile.created_at).toLocaleDateString("fr-FR", {
                   year: "numeric",
                   month: "long",
                   day: "numeric",
                 })
-              : "Inconnue"}
-          </span>
-        </InfoRow>
-      </Card>
-    </Container>
+              : "Inconnue",
+          },
+        ].map((row, i, arr) => {
+          const Icon = row.icon;
+          return (
+            <div
+              key={row.label}
+              className={`flex items-center gap-3 py-3 ${
+                i === arr.length - 1 ? "" : "border-b border-app"
+              }`}
+            >
+              <Icon size={18} className="text-app-secondary shrink-0" />
+              <span className="w-[140px] shrink-0 font-semibold text-app-tertiary">
+                {row.label}
+              </span>
+              <span className="text-app-primary break-words">{row.value}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 };

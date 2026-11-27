@@ -2,186 +2,14 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import styled from "styled-components";
+import { Users, UserCheck, Archive, Plus, UserCircle, Lock } from "lucide-react";
 import { dbApi } from "../../lib/apiClient";
 import { format } from "date-fns";
 import { useAuth } from "../../contexts/AuthContext";
 import { ProtectedAction } from "../../components/auth/ProtectedAction";
 import { usePermission } from "../../hooks/usePermission";
-
-const Container = styled.div`
-  background: #0f172a;
-  border-radius: 16px;
-  padding: 24px 28px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-  border: 1px solid #1e293b;
-  color: #e2e8f0;
-`;
-
-const Header = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 20px;
-  padding-bottom: 12px;
-  border-bottom: 2px solid #1e293b;
-`;
-
-const HeaderTitle = styled.h2`
-  font-size: 22px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  i {
-    color: #4facfe;
-  }
-`;
-
-const Button = styled.button<{ variant?: "primary" | "secondary" }>`
-  padding: 6px 14px;
-  border: none;
-  border-radius: 4px;
-  font-weight: 600;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background 0.2s;
-  ${({ variant }) => {
-    if (variant === "primary")
-      return "background: #4facfe; color: #fff; &:hover { background: #3b8edb; }";
-    return "background: #334155; color: #e2e8f0; &:hover { background: #475569; }";
-  }}
-`;
-
-const TabsContainer = styled.div`
-  display: flex;
-  background: #1e293b;
-  border-radius: 6px;
-  padding: 3px;
-  border: 1px solid #334155;
-`;
-
-const Tab = styled.button<{ $active: boolean }>`
-  padding: 6px 14px;
-  border: none;
-  border-radius: 4px;
-  background: ${({ $active }) => ($active ? "#4facfe" : "transparent")};
-  color: ${({ $active }) => ($active ? "#fff" : "#94a3b8")};
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  transition: all 0.15s;
-  &:hover {
-    color: ${({ $active }) => ($active ? "#fff" : "#e2e8f0")};
-  }
-`;
-
-const TableWrapper = styled.div`
-  overflow-x: auto;
-`;
-
-const StyledTable = styled.table`
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-  th,
-  td {
-    padding: 8px 12px;
-    border-bottom: 1px solid #1e293b;
-    text-align: left;
-    vertical-align: middle;
-  }
-  th {
-    color: #94a3b8;
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 10px;
-    letter-spacing: 0.5px;
-    border-bottom: 2px solid #334155;
-  }
-  .clickable {
-    cursor: pointer;
-    &:hover {
-      background: #1e293b;
-    }
-  }
-`;
-
-const Avatar = styled.div`
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  overflow: hidden;
-  background: #1e293b;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  i {
-    color: #475569;
-    font-size: 16px;
-  }
-`;
-
-const StatusBadge = styled.span<{ $archived: boolean }>`
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 600;
-  ${({ $archived }) =>
-    $archived
-      ? "background: #fef3c7; color: #92400e;"
-      : "background: #14532d; color: #86efac;"}
-`;
-
-const LoadingContainer = styled.div`
-  text-align: center;
-  padding: 3rem;
-  color: #94a3b8;
-`;
-
-const AccessDeniedContainer = styled.div`
-  background: #0f172a;
-  border-radius: 16px;
-  padding: 60px 28px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-  border: 1px solid #1e293b;
-  color: #e2e8f0;
-  text-align: center;
-  max-width: 600px;
-  margin: 40px auto;
-`;
-
-const AccessDeniedIcon = styled.div`
-  font-size: 64px;
-  color: #fca5a5;
-  margin-bottom: 20px;
-`;
-
-const AccessDeniedTitle = styled.h2`
-  font-size: 22px;
-  font-weight: 700;
-  color: #e2e8f0;
-  margin-bottom: 12px;
-`;
-
-const AccessDeniedText = styled.p`
-  font-size: 14px;
-  color: #94a3b8;
-  margin-bottom: 8px;
-  line-height: 1.6;
-  strong {
-    color: #e2e8f0;
-  }
-`;
+import { PageHeader } from "../../components/ui/PageHeader";
+import { cn } from "../../lib/utils";
 
 interface Collaborateur {
   id: string;
@@ -238,132 +66,167 @@ export const CollaborateurList: React.FC = () => {
 
   if (loading) {
     return (
-      <LoadingContainer>
+      <div className="text-center py-12 text-app-tertiary">
         <i className="fas fa-spinner fa-spin"></i> {t("common.loading")}
-      </LoadingContainer>
+      </div>
     );
   }
 
   if (!canViewCollaborateurs) {
     return (
-      <AccessDeniedContainer>
-        <AccessDeniedIcon>
-          <i className="fas fa-user-lock"></i>
-        </AccessDeniedIcon>
-        <AccessDeniedTitle>Accès refusé</AccessDeniedTitle>
-        <AccessDeniedText>
-          Votre rôle actuel (<strong>"{role || "inconnu"}"</strong>) ne vous
-          permet pas de consulter les informations des collaborateurs.
-        </AccessDeniedText>
-        <AccessDeniedText>
+      <div className="card p-16 text-center max-w-2xl mx-auto my-10">
+        <Lock className="w-16 h-16 mx-auto mb-5 text-error" />
+        <h2 className="text-xl font-bold text-app-primary mb-3">
+          Accès refusé
+        </h2>
+        <p className="text-sm text-app-tertiary mb-2 leading-relaxed">
+          Votre rôle actuel (
+          <strong className="text-app-primary">"{role || "inconnu"}"</strong>)
+          ne vous permet pas de consulter les informations des collaborateurs.
+        </p>
+        <p className="text-sm text-app-tertiary mb-2 leading-relaxed">
           Veuillez contacter votre administrateur si vous pensez qu'il s'agit
           d'une erreur.
-        </AccessDeniedText>
-      </AccessDeniedContainer>
+        </p>
+      </div>
     );
   }
 
   return (
-    <Container>
-      <Header>
-        <HeaderTitle>
-          <i className="fas fa-users"></i> Collaborateurs
-        </HeaderTitle>
+    <div className="page-container">
+      <PageHeader
+        title="Collaborateurs"
+        description="Gérez les collaborateurs actifs et archivés"
+        actions={
+          <div className="flex gap-2 items-center">
+            <div className="flex bg-app-secondary rounded-md p-0.5 border border-app">
+              <button
+                onClick={() => setShowArchived(false)}
+                className={cn(
+                  "px-3.5 py-1.5 rounded text-xs font-semibold transition-colors flex items-center gap-1.5",
+                  !showArchived
+                    ? "bg-primary text-white"
+                    : "text-app-tertiary hover:text-app-primary",
+                )}
+              >
+                <UserCheck className="w-3.5 h-3.5" /> Actifs
+              </button>
+              <button
+                onClick={() => setShowArchived(true)}
+                className={cn(
+                  "px-3.5 py-1.5 rounded text-xs font-semibold transition-colors flex items-center gap-1.5",
+                  showArchived
+                    ? "bg-primary text-white"
+                    : "text-app-tertiary hover:text-app-primary",
+                )}
+              >
+                <Archive className="w-3.5 h-3.5" /> Archivés
+              </button>
+            </div>
 
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          <TabsContainer>
-            <Tab $active={!showArchived} onClick={() => setShowArchived(false)}>
-              <i className="fas fa-user-check"></i> Actifs
-            </Tab>
-            <Tab $active={showArchived} onClick={() => setShowArchived(true)}>
-              <i className="fas fa-archive"></i> Archivés
-            </Tab>
-          </TabsContainer>
+            <ProtectedAction module="collaborateurs" action="create">
+              <button
+                onClick={() => navigate("/collaborateurs/new")}
+                className="btn-primary btn-md"
+              >
+                <Plus className="w-4 h-4" /> Nouveau collaborateur
+              </button>
+            </ProtectedAction>
+          </div>
+        }
+      />
 
-          <ProtectedAction module="collaborateurs" action="create">
-            <Button
-              variant="primary"
-              onClick={() => navigate("/collaborateurs/new")}
-            >
-              <i className="fas fa-plus"></i> Nouveau collaborateur
-            </Button>
-          </ProtectedAction>
-        </div>
-      </Header>
-
-      <TableWrapper>
-        <StyledTable>
-          <thead>
-            <tr>
-              <th style={{ width: "50px" }}>Photo</th>
-              <th>Nom</th>
-              <th>Prénom</th>
-              <th>Fonction</th>
-              <th>Pays</th>
-              <th>Date embauche</th>
-              <th>Statut</th>
-            </tr>
-          </thead>
-          <tbody>
-            {collaborateurs.map((c) => (
-              <ProtectedAction key={c.id} module="collaborateurs" action="view">
-                <tr
-                  className="clickable"
-                  onClick={() => navigate(`/collaborateurs/${c.id}`)}
-                >
-                  <td>
-                    <Avatar>
-                      {c.photo_url ? (
-                        <img src={c.photo_url} alt={c.nom} />
-                      ) : (
-                        <i className="fas fa-user-circle"></i>
-                      )}
-                    </Avatar>
-                  </td>
-                  <td>{c.nom}</td>
-                  <td>{c.prenom}</td>
-                  <td>{c.fonction || "-"}</td>
-                  <td>{c.pays || "-"}</td>
-                  <td>
-                    {c.date_embauche
-                      ? format(new Date(c.date_embauche), "dd/MM/yyyy")
-                      : "-"}
-                  </td>
-                  <td>
-                    <StatusBadge $archived={!!c.archived}>
+      <div className="card p-5">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr>
+                <th className="px-3 py-2 text-left text-app-tertiary font-semibold uppercase text-[10px] tracking-wide border-b-2 border-app">
+                  Photo
+                </th>
+                <th className="px-3 py-2 text-left text-app-tertiary font-semibold uppercase text-[10px] tracking-wide border-b-2 border-app">
+                  Nom
+                </th>
+                <th className="px-3 py-2 text-left text-app-tertiary font-semibold uppercase text-[10px] tracking-wide border-b-2 border-app">
+                  Prénom
+                </th>
+                <th className="px-3 py-2 text-left text-app-tertiary font-semibold uppercase text-[10px] tracking-wide border-b-2 border-app">
+                  Fonction
+                </th>
+                <th className="px-3 py-2 text-left text-app-tertiary font-semibold uppercase text-[10px] tracking-wide border-b-2 border-app">
+                  Pays
+                </th>
+                <th className="px-3 py-2 text-left text-app-tertiary font-semibold uppercase text-[10px] tracking-wide border-b-2 border-app">
+                  Date embauche
+                </th>
+                <th className="px-3 py-2 text-left text-app-tertiary font-semibold uppercase text-[10px] tracking-wide border-b-2 border-app">
+                  Statut
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {collaborateurs.map((c) => (
+                <ProtectedAction key={c.id} module="collaborateurs" action="view">
+                  <tr
+                    className="cursor-pointer hover:bg-app-secondary border-b border-app"
+                    onClick={() => navigate(`/collaborateurs/${c.id}`)}
+                  >
+                    <td className="px-3 py-2">
+                      <div className="w-8 h-8 rounded-full overflow-hidden bg-app-secondary flex items-center justify-center">
+                        {c.photo_url ? (
+                          <img
+                            src={c.photo_url}
+                            alt={c.nom}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <UserCircle className="w-4 h-4 text-app-tertiary" />
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-app-primary">{c.nom}</td>
+                    <td className="px-3 py-2 text-app-primary">{c.prenom}</td>
+                    <td className="px-3 py-2 text-app-secondary">
+                      {c.fonction || "-"}
+                    </td>
+                    <td className="px-3 py-2 text-app-secondary">
+                      {c.pays || "-"}
+                    </td>
+                    <td className="px-3 py-2 text-app-secondary">
+                      {c.date_embauche
+                        ? format(new Date(c.date_embauche), "dd/MM/yyyy")
+                        : "-"}
+                    </td>
+                    <td className="px-3 py-2">
                       {c.archived ? (
-                        <>
-                          <i className="fas fa-archive"></i> Archivé
-                        </>
+                        <span className="badge badge-warning">
+                          <Archive className="w-3 h-3" /> Archivé
+                        </span>
                       ) : (
-                        <>
-                          <i className="fas fa-user-check"></i> Actif
-                        </>
+                        <span className="badge badge-success">
+                          <UserCheck className="w-3 h-3" /> Actif
+                        </span>
                       )}
-                    </StatusBadge>
+                    </td>
+                  </tr>
+                </ProtectedAction>
+              ))}
+              {collaborateurs.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="text-center text-app-tertiary py-6"
+                  >
+                    {showArchived
+                      ? "Aucun collaborateur archivé"
+                      : "Aucun collaborateur actif"}
                   </td>
                 </tr>
-              </ProtectedAction>
-            ))}
-            {collaborateurs.length === 0 && (
-              <tr>
-                <td
-                  colSpan={7}
-                  style={{
-                    textAlign: "center",
-                    color: "#94a3b8",
-                    padding: "24px",
-                  }}
-                >
-                  {showArchived
-                    ? "Aucun collaborateur archivé"
-                    : "Aucun collaborateur actif"}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </StyledTable>
-      </TableWrapper>
-    </Container>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   );
 };

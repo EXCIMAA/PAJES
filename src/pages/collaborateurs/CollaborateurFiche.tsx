@@ -1,7 +1,26 @@
 // src/pages/collaborateurs/CollaborateurFiche.tsx
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import styled from "styled-components";
+import {
+  ArrowLeft,
+  Archive,
+  Undo,
+  Save,
+  Upload,
+  Trash2,
+  UserCircle,
+  IdCard,
+  Briefcase,
+  FolderOpen,
+  Star,
+  Lock,
+  UserPlus,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  RefreshCw,
+  FileUp,
+} from "lucide-react";
 import { dbApi, fileApi } from "../../lib/apiClient";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -12,465 +31,8 @@ import { DocumentImage } from "../../components/DocumentImage";
 import { ProtectedAction } from "../../components/auth/ProtectedAction";
 import { canAccessRecordSafe } from "../../lib/permissions";
 import { usePermission } from "../../hooks/usePermission";
-
-// ==================== STYLES ====================
-const Container = styled.div`
-  background: #0f172a;
-  border-radius: 16px;
-  padding: 24px 28px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-  border: 1px solid #1e293b;
-  color: #e2e8f0;
-`;
-
-const Header = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 20px;
-  padding-bottom: 12px;
-  border-bottom: 2px solid #1e293b;
-`;
-
-const HeaderTitle = styled.h2`
-  font-size: 22px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  i {
-    color: #4facfe;
-  }
-`;
-
-const Section = styled.div`
-  background: #1e293b;
-  border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 20px;
-  border: 1px solid #334155;
-`;
-
-const SectionTitle = styled.h3`
-  font-size: 16px;
-  font-weight: 600;
-  color: #4facfe;
-  margin-bottom: 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-`;
-
-const Grid = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  @media (max-width: 768px) {
-    grid-template-columns: 1fr;
-  }
-`;
-
-const Field = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  label {
-    font-size: 12px;
-    color: #94a3b8;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  input,
-  select,
-  textarea {
-    padding: 8px 12px;
-    border: 1px solid #334155;
-    border-radius: 6px;
-    background: #0f172a;
-    color: #e2e8f0;
-    font-size: 14px;
-    &:focus {
-      outline: none;
-      border-color: #4facfe;
-    }
-    &::placeholder {
-      color: #64748b;
-    }
-  }
-  textarea {
-    min-height: 60px;
-    resize: vertical;
-  }
-`;
-
-const PhotoSection = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-`;
-
-const PhotoPreview = styled.div`
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  overflow: hidden;
-  border: 2px solid #334155;
-  background: #0f172a;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  .placeholder {
-    font-size: 40px;
-    color: #475569;
-  }
-`;
-
-const UploadButton = styled.button`
-  padding: 8px 16px;
-  background: #4facfe;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  &:hover {
-    background: #3b8edb;
-  }
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-`;
-
-const FileInput = styled.input`
-  display: none;
-`;
-
-const Button = styled.button<{
-  variant?: "primary" | "secondary" | "danger" | "success";
-}>`
-  padding: 6px 14px;
-  border: none;
-  border-radius: 4px;
-  font-weight: 600;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background 0.2s;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  ${({ variant }) => {
-    if (variant === "primary")
-      return "background: #4facfe; color: #fff; &:hover { background: #3b8edb; }";
-    if (variant === "secondary")
-      return "background: #334155; color: #e2e8f0; &:hover { background: #475569; }";
-    if (variant === "danger")
-      return "background: #dc2626; color: #fff; &:hover { background: #b91c1c; }";
-    if (variant === "success")
-      return "background: #22c55e; color: #fff; &:hover { background: #16a34a; }";
-    return "background: #1e293b; color: #e2e8f0; &:hover { background: #334155; }";
-  }}
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-`;
-
-const ScoreGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 12px;
-  .score-item {
-    background: #0f172a;
-    padding: 12px;
-    border-radius: 8px;
-    text-align: center;
-    .value {
-      font-size: 24px;
-      font-weight: 700;
-      color: #e2e8f0;
-    }
-    .label {
-      font-size: 11px;
-      color: #94a3b8;
-      text-transform: uppercase;
-      margin-top: 4px;
-    }
-  }
-`;
-
-const LoadingContainer = styled.div`
-  text-align: center;
-  padding: 3rem;
-  color: #94a3b8;
-`;
-
-const AccessDeniedContainer = styled.div`
-  background: #0f172a;
-  border-radius: 16px;
-  padding: 60px 28px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-  border: 1px solid #1e293b;
-  color: #e2e8f0;
-  text-align: center;
-  max-width: 600px;
-  margin: 40px auto;
-`;
-
-const AccessDeniedIcon = styled.div`
-  font-size: 64px;
-  color: #fca5a5;
-  margin-bottom: 20px;
-`;
-
-const AccessDeniedTitle = styled.h2`
-  font-size: 22px;
-  font-weight: 700;
-  color: #e2e8f0;
-  margin-bottom: 12px;
-`;
-
-const AccessDeniedText = styled.p`
-  font-size: 14px;
-  color: #94a3b8;
-  margin-bottom: 8px;
-  line-height: 1.6;
-  strong {
-    color: #e2e8f0;
-  }
-`;
-
-const ArchiveBanner = styled.div`
-  padding: 14px 18px;
-  background: rgba(251, 191, 36, 0.12);
-  border: 1px solid #fbbf24;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: #fbbf24;
-  font-size: 14px;
-
-  .icon {
-    font-size: 20px;
-  }
-
-  .content {
-    flex: 1;
-  }
-
-  .title {
-    font-weight: 700;
-  }
-
-  .sub {
-    font-size: 12px;
-    color: #fcd34d;
-    margin-top: 4px;
-  }
-`;
-
-// ==================== DOSSIER STYLES ====================
-const Accordion = styled.div`
-  background: #0f172a;
-  border: 1px solid #334155;
-  border-radius: 8px;
-  margin-bottom: 8px;
-  overflow: hidden;
-`;
-
-const AccordionHeader = styled.button<{
-  $open: boolean;
-  $confidential?: boolean;
-}>`
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  background: ${({ $open }) => ($open ? "#1e293b" : "transparent")};
-  border: none;
-  color: #e2e8f0;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  text-align: left;
-  transition: background 0.15s;
-  &:hover {
-    background: #1e293b;
-  }
-  .left {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    i {
-      color: #4facfe;
-      width: 16px;
-    }
-  }
-  .badge {
-    font-size: 10px;
-    text-transform: uppercase;
-    padding: 2px 6px;
-    border-radius: 4px;
-    margin-left: 8px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-  }
-  .badge.conf {
-    background: #fef3c7;
-    color: #92400e;
-  }
-  .badge.vconf {
-    background: #fee2e2;
-    color: #991b1b;
-  }
-  .right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: #94a3b8;
-    font-size: 12px;
-    font-weight: 400;
-  }
-`;
-
-const AccordionContent = styled.div<{ $open: boolean }>`
-  display: ${({ $open }) => ($open ? "block" : "none")};
-  padding: 8px 16px 16px;
-  border-top: 1px solid #334155;
-`;
-
-const CheckItem = styled.div<{ $checked: boolean }>`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  margin-bottom: 4px;
-  background: ${({ $checked }) =>
-    $checked ? "rgba(34,197,94,0.08)" : "transparent"};
-  transition: background 0.15s;
-  &:hover {
-    background: ${({ $checked }) =>
-      $checked ? "rgba(34,197,94,0.12)" : "#1e293b"};
-  }
-  input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    cursor: pointer;
-    accent-color: #22c55e;
-    flex-shrink: 0;
-  }
-  .label {
-    flex: 1;
-    font-size: 13px;
-    color: ${({ $checked }) => ($checked ? "#22c55e" : "#e2e8f0")};
-    text-decoration: ${({ $checked }) => ($checked ? "line-through" : "none")};
-  }
-  .actions {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-  }
-  .link-icon {
-    color: #4facfe;
-    text-decoration: none;
-    font-size: 12px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    &:hover {
-      text-decoration: underline;
-    }
-  }
-  .upload-btn {
-    padding: 4px 8px;
-    background: #334155;
-    color: #e2e8f0;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 11px;
-    &:hover {
-      background: #475569;
-    }
-  }
-  .replace-btn {
-    padding: 4px 8px;
-    background: #3b82f6;
-    color: #fff;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 11px;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    &:hover {
-      background: #2563eb;
-    }
-  }
-  .delete-btn-text {
-    padding: 4px 8px;
-    background: #dc2626;
-    color: #fff;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 11px;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    transition:
-      background 0.2s,
-      transform 0.1s;
-    &:hover {
-      background: #b91c1c;
-      transform: scale(1.05);
-    }
-    &:active {
-      transform: scale(0.98);
-    }
-  }
-  .del-btn {
-    padding: 4px 6px;
-    background: transparent;
-    color: #dc2626;
-    border: none;
-    cursor: pointer;
-    font-size: 12px;
-    &:hover {
-      color: #b91c1c;
-    }
-  }
-`;
-
-const ProgressBar = styled.div`
-  height: 6px;
-  background: #1e293b;
-  border-radius: 3px;
-  overflow: hidden;
-  margin-top: 8px;
-  .fill {
-    height: 100%;
-    background: linear-gradient(90deg, #4facfe, #22c55e);
-    transition: width 0.3s;
-  }
-`;
+import { PageHeader } from "../../components/ui/PageHeader";
+import { cn } from "../../lib/utils";
 
 // ==================== TYPES ====================
 interface Collaborateur {
@@ -1011,153 +573,155 @@ const CollaborateurFiche: React.FC = () => {
 
   if (loading) {
     return (
-      <LoadingContainer>
+      <div className="text-center py-12 text-app-tertiary">
         <i className="fas fa-spinner fa-spin"></i> Chargement...
-      </LoadingContainer>
+      </div>
     );
   }
 
   // ✅ ACCESS DENIED — Utilisateur non autorisé à VOIR les collaborateurs
   if (!canViewCollaborateurs && !isNew) {
     return (
-      <AccessDeniedContainer>
-        <AccessDeniedIcon>
-          <i className="fas fa-user-lock"></i>
-        </AccessDeniedIcon>
-        <AccessDeniedTitle>Accès refusé</AccessDeniedTitle>
-        <AccessDeniedText>
-          Votre rôle actuel (<strong>"{role || "inconnu"}"</strong>) ne vous
-          permet pas de consulter les informations des collaborateurs.
-        </AccessDeniedText>
-        <AccessDeniedText>
+      <div className="card p-16 text-center max-w-2xl mx-auto my-10">
+        <Lock className="w-16 h-16 mx-auto mb-5 text-error" />
+        <h2 className="text-xl font-bold text-app-primary mb-3">
+          Accès refusé
+        </h2>
+        <p className="text-sm text-app-tertiary mb-2 leading-relaxed">
+          Votre rôle actuel (
+          <strong className="text-app-primary">"{role || "inconnu"}"</strong>)
+          ne vous permet pas de consulter les informations des collaborateurs.
+        </p>
+        <p className="text-sm text-app-tertiary mb-2 leading-relaxed">
           Veuillez contacter votre administrateur si vous pensez qu'il s'agit
           d'une erreur.
-        </AccessDeniedText>
-        <Button
-          variant="primary"
+        </p>
+        <button
           onClick={() => navigate("/collaborateurs")}
-          style={{ marginTop: 24, padding: "10px 24px", fontSize: 14 }}
+          className="btn-primary btn-md mt-6"
         >
-          <i className="fas fa-arrow-left"></i> Retour
-        </Button>
-      </AccessDeniedContainer>
+          <ArrowLeft className="w-4 h-4" /> Retour
+        </button>
+      </div>
     );
   }
 
   // ✅ ACCESS DENIED — Utilisateur non autorisé à CRÉER un collaborateur
   if (isNew && !canCreateCollaborateurs) {
     return (
-      <AccessDeniedContainer>
-        <AccessDeniedIcon>
-          <i className="fas fa-user-plus"></i>
-        </AccessDeniedIcon>
-        <AccessDeniedTitle>
+      <div className="card p-16 text-center max-w-2xl mx-auto my-10">
+        <UserPlus className="w-16 h-16 mx-auto mb-5 text-error" />
+        <h2 className="text-xl font-bold text-app-primary mb-3">
           Vous ne pouvez pas créer de collaborateur
-        </AccessDeniedTitle>
-        <AccessDeniedText>
-          Votre rôle actuel (<strong>"{role || "inconnu"}"</strong>) ne vous
-          permet pas de créer un collaborateur.
-        </AccessDeniedText>
-        <AccessDeniedText>
+        </h2>
+        <p className="text-sm text-app-tertiary mb-2 leading-relaxed">
+          Votre rôle actuel (
+          <strong className="text-app-primary">"{role || "inconnu"}"</strong>)
+          ne vous permet pas de créer un collaborateur.
+        </p>
+        <p className="text-sm text-app-tertiary mb-2 leading-relaxed">
           Veuillez contacter votre administrateur si vous pensez qu'il s'agit
           d'une erreur.
-        </AccessDeniedText>
-        <Button
-          variant="primary"
+        </p>
+        <button
           onClick={() => navigate("/collaborateurs")}
-          style={{ marginTop: 24, padding: "10px 24px", fontSize: 14 }}
+          className="btn-primary btn-md mt-6"
         >
-          <i className="fas fa-arrow-left"></i> Retour
-        </Button>
-      </AccessDeniedContainer>
+          <ArrowLeft className="w-4 h-4" /> Retour
+        </button>
+      </div>
     );
   }
 
   // ✅ ACCESS DENIED — Détecté par canAccessRecordSafe
   if (accessDenied) {
     return (
-      <AccessDeniedContainer>
-        <AccessDeniedIcon>
-          <i className="fas fa-user-lock"></i>
-        </AccessDeniedIcon>
-        <AccessDeniedTitle>Vous n'avez pas accès à ce profil</AccessDeniedTitle>
-        <AccessDeniedText>
+      <div className="card p-16 text-center max-w-2xl mx-auto my-10">
+        <Lock className="w-16 h-16 mx-auto mb-5 text-error" />
+        <h2 className="text-xl font-bold text-app-primary mb-3">
+          Vous n'avez pas accès à ce profil
+        </h2>
+        <p className="text-sm text-app-tertiary mb-2 leading-relaxed">
           Votre rôle ne vous permet pas de consulter les informations de ce
           collaborateur.
-        </AccessDeniedText>
-        <Button
-          variant="primary"
+        </p>
+        <button
           onClick={() => navigate("/collaborateurs")}
-          style={{ marginTop: 24, padding: "10px 24px", fontSize: 14 }}
+          className="btn-primary btn-md mt-6"
         >
-          <i className="fas fa-arrow-left"></i> Retour
-        </Button>
-      </AccessDeniedContainer>
+          <ArrowLeft className="w-4 h-4" /> Retour
+        </button>
+      </div>
     );
   }
 
   return (
-    <Container>
-      <Header>
-        <HeaderTitle>
-          <i className="fas fa-user"></i>
-          {isNew
+    <div className="page-container">
+      <PageHeader
+        title={
+          isNew
             ? "Nouveau collaborateur"
-            : `${collaborateur.prenom || ""} ${collaborateur.nom || ""}`}
-        </HeaderTitle>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          <Button
-            variant="secondary"
-            onClick={() => navigate("/collaborateurs")}
-          >
-            <i className="fas fa-arrow-left"></i> Retour
-          </Button>
+            : `${collaborateur.prenom || ""} ${collaborateur.nom || ""}`
+        }
+        description="Fiche détaillée du collaborateur"
+        actions={
+          <div className="flex gap-2 items-center">
+            <button
+              onClick={() => navigate("/collaborateurs")}
+              className="btn-secondary btn-md"
+            >
+              <ArrowLeft className="w-4 h-4" /> Retour
+            </button>
 
-          {/* ✅ Bouton Archiver / Restaurer */}
-          {!isNew &&
-            (collaborateur.archived ? (
-              <ProtectedAction module="collaborateurs" action="edit">
-                <Button
-                  variant="success"
-                  onClick={handleRestore}
-                  disabled={saving}
-                  title="Restaurer ce collaborateur"
-                >
-                  <i className="fas fa-undo"></i> {saving ? "..." : "Restaurer"}
-                </Button>
-              </ProtectedAction>
-            ) : (
-              <ProtectedAction module="collaborateurs" action="delete">
-                <Button
-                  variant="danger"
-                  onClick={handleArchive}
-                  disabled={saving}
-                  title="Archiver ce collaborateur (les données sont conservées)"
-                >
-                  <i className="fas fa-archive"></i>{" "}
-                  {saving ? "..." : "Archiver"}
-                </Button>
-              </ProtectedAction>
-            ))}
+            {/* ✅ Bouton Archiver / Restaurer */}
+            {!isNew &&
+              (collaborateur.archived ? (
+                <ProtectedAction module="collaborateurs" action="edit">
+                  <button
+                    onClick={handleRestore}
+                    disabled={saving}
+                    title="Restaurer ce collaborateur"
+                    className="btn-secondary btn-md"
+                  >
+                    <Undo className="w-4 h-4" /> {saving ? "..." : "Restaurer"}
+                  </button>
+                </ProtectedAction>
+              ) : (
+                <ProtectedAction module="collaborateurs" action="delete">
+                  <button
+                    onClick={handleArchive}
+                    disabled={saving}
+                    title="Archiver ce collaborateur (les données sont conservées)"
+                    className="btn-danger btn-md"
+                  >
+                    <Archive className="w-4 h-4" /> {saving ? "..." : "Archiver"}
+                  </button>
+                </ProtectedAction>
+              ))}
 
-          <ProtectedAction
-            module="collaborateurs"
-            action={isNew ? "create" : "edit"}
-          >
-            <Button variant="primary" onClick={handleSubmit} disabled={saving}>
-              {saving ? "Sauvegarde..." : "Enregistrer"}
-            </Button>
-          </ProtectedAction>
-        </div>
-      </Header>
+            <ProtectedAction
+              module="collaborateurs"
+              action={isNew ? "create" : "edit"}
+            >
+              <button
+                onClick={handleSubmit}
+                disabled={saving}
+                className="btn-primary btn-md"
+              >
+                <Save className="w-4 h-4" /> {saving ? "Sauvegarde..." : "Enregistrer"}
+              </button>
+            </ProtectedAction>
+          </div>
+        }
+      />
 
       {/* ✅ Bandeau si le collaborateur est archivé */}
       {!isNew && collaborateur.archived && (
-        <ArchiveBanner>
-          <i className="fas fa-archive icon"></i>
-          <div className="content">
-            <div className="title">Ce collaborateur est archivé</div>
-            <div className="sub">
+        <div className="flex items-center gap-3 p-4 mb-5 rounded-lg border border-warning bg-warning/10 text-warning text-sm">
+          <Archive className="w-5 h-5 flex-shrink-0" />
+          <div className="flex-1">
+            <div className="font-bold">Ce collaborateur est archivé</div>
+            <div className="text-xs mt-1 text-warning/80">
               Archivé le{" "}
               {collaborateur.archived_at
                 ? format(
@@ -1171,27 +735,26 @@ const CollaborateurFiche: React.FC = () => {
             </div>
           </div>
           <ProtectedAction module="collaborateurs" action="edit">
-            <Button
-              variant="success"
+            <button
               onClick={handleRestore}
               disabled={saving}
-              style={{ fontSize: "12px" }}
+              className="btn-secondary btn-sm"
             >
-              <i className="fas fa-undo"></i> Restaurer
-            </Button>
+              <Undo className="w-3.5 h-3.5" /> Restaurer
+            </button>
           </ProtectedAction>
-        </ArchiveBanner>
+        </div>
       )}
 
       <form onSubmit={handleSubmit}>
         {/* ===== PERSONNELLE ===== */}
-        <Section>
-          <SectionTitle>
-            <i className="fas fa-id-card"></i> Informations personnelles
-          </SectionTitle>
+        <div className="card p-5 mb-5">
+          <h3 className="text-base font-semibold text-primary mb-4 flex items-center gap-2">
+            <IdCard className="w-4 h-4" /> Informations personnelles
+          </h3>
 
-          <PhotoSection>
-            <PhotoPreview>
+          <div className="flex items-center gap-5 flex-wrap mb-4">
+            <div className="w-30 h-30 rounded-full overflow-hidden border-2 border-app bg-app-secondary flex items-center justify-center" style={{ width: 120, height: 120 }}>
               {collaborateur.photo_url ? (
                 <DocumentImage
                   filePath={collaborateur.photo_url}
@@ -1199,24 +762,24 @@ const CollaborateurFiche: React.FC = () => {
                   alt="Photo de profil"
                 />
               ) : (
-                <span className="placeholder">
-                  <i className="fas fa-user-circle"></i>
-                </span>
+                <UserCircle className="w-10 h-10 text-app-tertiary" />
               )}
-            </PhotoPreview>
+            </div>
             <div>
               <ProtectedAction module="collaborateur_profiles" action="edit">
-                <UploadButton
+                <button
                   type="button"
                   onClick={() => photoInputRef.current?.click()}
+                  className="btn-primary btn-md"
                 >
-                  <i className="fas fa-upload"></i> Importer une photo
-                </UploadButton>
+                  <Upload className="w-4 h-4" /> Importer une photo
+                </button>
               </ProtectedAction>
-              <FileInput
+              <input
                 ref={photoInputRef}
                 type="file"
                 accept="image/*"
+                className="hidden"
                 onChange={(e) => {
                   if (e.target.files?.[0])
                     handleUpload("photo_url", e.target.files[0]);
@@ -1227,51 +790,66 @@ const CollaborateurFiche: React.FC = () => {
                   module="collaborateur_profiles"
                   action="delete"
                 >
-                  <Button
-                    variant="danger"
+                  <button
                     type="button"
                     onClick={() => handleChange("photo_url", "")}
+                    className="btn-danger btn-md mt-2"
                   >
                     Supprimer
-                  </Button>
+                  </button>
                 </ProtectedAction>
               )}
             </div>
-          </PhotoSection>
+          </div>
 
-          <Grid>
-            <Field>
-              <label>Nom *</label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-app-tertiary uppercase tracking-wide">
+                Nom *
+              </label>
               <input
+                className="input-md"
                 value={collaborateur.nom || ""}
                 onChange={(e) => handleChange("nom", e.target.value)}
               />
-            </Field>
-            <Field>
-              <label>Prénom *</label>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-app-tertiary uppercase tracking-wide">
+                Prénom *
+              </label>
               <input
+                className="input-md"
                 value={collaborateur.prenom || ""}
                 onChange={(e) => handleChange("prenom", e.target.value)}
               />
-            </Field>
-            <Field>
-              <label>Date de naissance</label>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-app-tertiary uppercase tracking-wide">
+                Date de naissance
+              </label>
               <input
                 type="date"
+                className="input-md"
                 value={collaborateur.date_naissance || ""}
                 onChange={(e) => handleChange("date_naissance", e.target.value)}
               />
-            </Field>
-            <Field>
-              <label>Lieu de naissance</label>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-app-tertiary uppercase tracking-wide">
+                Lieu de naissance
+              </label>
               <input
+                className="input-md"
                 value={collaborateur.lieu_naissance || ""}
                 onChange={(e) => handleChange("lieu_naissance", e.target.value)}
               />
-            </Field>
-            <Field>
-              <label>Sexe</label>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-app-tertiary uppercase tracking-wide">
+                Sexe
+              </label>
               <select
+                className="input-md"
                 value={collaborateur.sexe || ""}
                 onChange={(e) => handleChange("sexe", e.target.value)}
               >
@@ -1279,97 +857,97 @@ const CollaborateurFiche: React.FC = () => {
                 <option value="M">Masculin</option>
                 <option value="F">Féminin</option>
               </select>
-            </Field>
-          </Grid>
-        </Section>
+            </div>
+          </div>
+        </div>
 
         {/* ===== PROFESSIONNELLE ===== */}
-        <Section>
-          <SectionTitle>
-            <i className="fas fa-briefcase"></i> Informations professionnelles
-          </SectionTitle>
-          <Grid>
-            <Field>
-              <label>Fonction / Poste</label>
+        <div className="card p-5 mb-5">
+          <h3 className="text-base font-semibold text-primary mb-4 flex items-center gap-2">
+            <Briefcase className="w-4 h-4" /> Informations professionnelles
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-app-tertiary uppercase tracking-wide">
+                Fonction / Poste
+              </label>
               <input
+                className="input-md"
                 value={collaborateur.fonction || ""}
                 onChange={(e) => handleChange("fonction", e.target.value)}
               />
-            </Field>
-            <Field>
-              <label>Pays</label>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-app-tertiary uppercase tracking-wide">
+                Pays
+              </label>
               <input
+                className="input-md"
                 value={collaborateur.pays || ""}
                 onChange={(e) => handleChange("pays", e.target.value)}
               />
-            </Field>
-            <Field>
-              <label>Bureau</label>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-app-tertiary uppercase tracking-wide">
+                Bureau
+              </label>
               <input
+                className="input-md"
                 value={collaborateur.bureau || ""}
                 onChange={(e) => handleChange("bureau", e.target.value)}
               />
-            </Field>
-            <Field>
-              <label>Date d'embauche *</label>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-app-tertiary uppercase tracking-wide">
+                Date d'embauche *
+              </label>
               <input
                 type="date"
+                className="input-md"
                 value={collaborateur.date_embauche || ""}
                 onChange={(e) => handleChange("date_embauche", e.target.value)}
                 required
               />
-            </Field>
-            <Field>
-              <label>Date de départ</label>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-app-tertiary uppercase tracking-wide">
+                Date de départ
+              </label>
               <input
                 type="date"
+                className="input-md"
                 value={collaborateur.date_depart || ""}
                 onChange={(e) => handleChange("date_depart", e.target.value)}
               />
-            </Field>
-          </Grid>
-        </Section>
+            </div>
+          </div>
+        </div>
 
         {/* ===== DOSSIER DU COLLABORATEUR ===== */}
-        <Section>
-          <SectionTitle>
-            <i className="fas fa-folder-open"></i> Dossier du collaborateur
-          </SectionTitle>
+        <div className="card p-5 mb-5">
+          <h3 className="text-base font-semibold text-primary mb-4 flex items-center gap-2">
+            <FolderOpen className="w-4 h-4" /> Dossier du collaborateur
+          </h3>
 
-          <div style={{ marginBottom: "16px" }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: "12px",
-                color: "#94a3b8",
-                marginBottom: "4px",
-              }}
-            >
+          <div className="mb-4">
+            <div className="flex justify-between text-xs text-app-tertiary mb-1">
               <span>Complétude du dossier</span>
               <span>
                 {checkedItems} / {totalItems} ({Math.round(progressPercent)}%)
               </span>
             </div>
-            <ProgressBar>
-              <div className="fill" style={{ width: `${progressPercent}%` }} />
-            </ProgressBar>
+            <div className="h-1.5 bg-app-secondary rounded-full overflow-hidden mt-2">
+              <div
+                className="h-full bg-primary transition-all"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
           </div>
 
           {isNew && (
-            <div
-              style={{
-                padding: "12px",
-                background: "rgba(251,191,36,0.1)",
-                border: "1px solid #fbbf24",
-                borderRadius: "6px",
-                fontSize: "13px",
-                color: "#fbbf24",
-                marginBottom: "12px",
-              }}
-            >
-              <i className="fas fa-info-circle"></i> Enregistrez d'abord le
-              collaborateur pour gérer son dossier.
+            <div className="p-3 rounded-md border border-warning bg-warning/10 text-warning text-sm mb-3 flex items-center gap-2">
+              <Star className="w-4 h-4" /> Enregistrez d'abord le collaborateur
+              pour gérer son dossier.
             </div>
           )}
 
@@ -1380,36 +958,52 @@ const CollaborateurFiche: React.FC = () => {
             const isOpen = openAccordions[cat.id];
 
             return (
-              <Accordion key={cat.id}>
-                <AccordionHeader
-                  $open={!!isOpen}
-                  $confidential={cat.confidential}
+              <div
+                key={cat.id}
+                className="bg-app-secondary border border-app rounded-lg mb-2 overflow-hidden"
+              >
+                <button
                   type="button"
                   onClick={() =>
                     setOpenAccordions({ ...openAccordions, [cat.id]: !isOpen })
                   }
+                  className={cn(
+                    "w-full flex items-center justify-between px-4 py-3 text-app-primary text-sm font-semibold text-left transition-colors hover:bg-app-tertiary",
+                    isOpen && "bg-app-tertiary",
+                  )}
                 >
-                  <div className="left">
-                    <i className={`fas ${cat.icon}`}></i>
+                  <div className="flex items-center gap-2.5">
+                    <i className={`fas ${cat.icon} text-primary w-4`}></i>
                     {cat.title}
                     {cat.veryConfidential && (
-                      <span className="badge vconf">Très confidentiel</span>
+                      <span className="badge badge-error text-[10px] uppercase px-1.5 py-0.5 ml-2 font-bold tracking-wide">
+                        Très confidentiel
+                      </span>
                     )}
                     {!cat.veryConfidential && cat.confidential && (
-                      <span className="badge conf">Confidentiel</span>
+                      <span className="badge badge-warning text-[10px] uppercase px-1.5 py-0.5 ml-2 font-bold tracking-wide">
+                        Confidentiel
+                      </span>
                     )}
                   </div>
-                  <div className="right">
+                  <div className="flex items-center gap-2 text-app-tertiary text-xs font-normal">
                     <span>
                       {catChecked} / {cat.items.length}
                     </span>
-                    <i
-                      className={`fas fa-chevron-${isOpen ? "up" : "down"}`}
-                    ></i>
+                    {isOpen ? (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    )}
                   </div>
-                </AccordionHeader>
+                </button>
 
-                <AccordionContent $open={!!isOpen}>
+                <div
+                  className={cn(
+                    "px-4 pt-2 pb-4 border-t border-app",
+                    !isOpen && "hidden",
+                  )}
+                >
                   {cat.items.map((item) => {
                     const itemState = dossier[item.key] || {
                       checked: false,
@@ -1419,7 +1013,13 @@ const CollaborateurFiche: React.FC = () => {
                     const replaceInputId = `replace_${item.key}`;
 
                     return (
-                      <CheckItem key={item.key} $checked={itemState.checked}>
+                      <div
+                        key={item.key}
+                        className={cn(
+                          "flex items-center gap-2.5 px-2.5 py-2 rounded-md mb-1 transition-colors hover:bg-app-tertiary",
+                          itemState.checked && "bg-success/10 hover:bg-success/15",
+                        )}
+                      >
                         <ProtectedAction
                           module={
                             cat.confidential
@@ -1432,10 +1032,18 @@ const CollaborateurFiche: React.FC = () => {
                             type="checkbox"
                             checked={itemState.checked}
                             onChange={() => toggleDossierItem(item.key)}
+                            className="w-4 h-4 cursor-pointer accent-success flex-shrink-0"
                           />
                         </ProtectedAction>
-                        <span className="label">{item.label}</span>
-                        <div className="actions">
+                        <span
+                          className={cn(
+                            "flex-1 text-sm text-app-primary",
+                            itemState.checked && "text-success line-through",
+                          )}
+                        >
+                          {item.label}
+                        </span>
+                        <div className="flex gap-1.5 items-center">
                           {itemState.document_url ? (
                             <>
                               {/* ✅ WRAPPED: Voir le document */}
@@ -1451,13 +1059,13 @@ const CollaborateurFiche: React.FC = () => {
                                   filePath={itemState.document_url}
                                   bucket="documents"
                                   label="Voir"
-                                  className="link-icon"
+                                  className="text-primary text-xs flex items-center gap-1 hover:underline"
                                 />
                               </ProtectedAction>
                               <input
                                 type="file"
                                 id={replaceInputId}
-                                style={{ display: "none" }}
+                                className="hidden"
                                 onChange={(e) => {
                                   if (e.target.files?.[0]) {
                                     handleDossierReplace(
@@ -1478,7 +1086,7 @@ const CollaborateurFiche: React.FC = () => {
                               >
                                 <button
                                   type="button"
-                                  className="replace-btn"
+                                  className="btn-secondary btn-sm"
                                   onClick={() =>
                                     document
                                       .getElementById(replaceInputId)
@@ -1486,7 +1094,7 @@ const CollaborateurFiche: React.FC = () => {
                                   }
                                   title="Remplacer le document"
                                 >
-                                  <i className="fas fa-sync-alt"></i> Remplacer
+                                  <RefreshCw className="w-3.5 h-3.5" /> Remplacer
                                 </button>
                               </ProtectedAction>
                               <ProtectedAction
@@ -1499,13 +1107,13 @@ const CollaborateurFiche: React.FC = () => {
                               >
                                 <button
                                   type="button"
-                                  className="delete-btn-text"
+                                  className="btn-danger btn-sm"
                                   onClick={() =>
                                     deleteDossierDocument(item.key)
                                   }
                                   title="Supprimer ce document"
                                 >
-                                  <i className="fas fa-trash"></i> Supprimer
+                                  <Trash2 className="w-3.5 h-3.5" /> Supprimer
                                 </button>
                               </ProtectedAction>
                             </>
@@ -1514,7 +1122,7 @@ const CollaborateurFiche: React.FC = () => {
                               <input
                                 type="file"
                                 id={fileInputId}
-                                style={{ display: "none" }}
+                                className="hidden"
                                 onChange={(e) => {
                                   if (e.target.files?.[0]) {
                                     handleDossierUpload(
@@ -1535,7 +1143,7 @@ const CollaborateurFiche: React.FC = () => {
                               >
                                 <button
                                   type="button"
-                                  className="upload-btn"
+                                  className="btn-secondary btn-sm"
                                   onClick={() =>
                                     document
                                       .getElementById(fileInputId)
@@ -1543,54 +1151,56 @@ const CollaborateurFiche: React.FC = () => {
                                   }
                                   disabled={isNew}
                                 >
-                                  <i className="fas fa-upload"></i> Joindre
+                                  <FileUp className="w-3.5 h-3.5" /> Joindre
                                 </button>
                               </ProtectedAction>
                             </>
                           )}
                         </div>
-                      </CheckItem>
+                      </div>
                     );
                   })}
-                </AccordionContent>
-              </Accordion>
+                </div>
+              </div>
             );
           })}
-        </Section>
+        </div>
 
         {/* ===== SCORES ===== */}
-        <Section>
-          <SectionTitle>
-            <i className="fas fa-star"></i> Scores
-          </SectionTitle>
-          <ScoreGrid>
+        <div className="card p-5 mb-5">
+          <h3 className="text-base font-semibold text-primary mb-4 flex items-center gap-2">
+            <Star className="w-4 h-4" /> Scores
+          </h3>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-3">
             {scores.length > 0 ? (
               <>
-                <div className="score-item">
-                  <div className="value">
+                <div className="bg-app-secondary p-3 rounded-lg text-center">
+                  <div className="text-2xl font-bold text-app-primary">
                     {scores[0].score_mensuel?.toFixed(1) || "-"}
                   </div>
-                  <div className="label">Mensuel</div>
+                  <div className="text-[11px] text-app-tertiary uppercase mt-1">
+                    Mensuel
+                  </div>
                 </div>
-                <div className="score-item">
-                  <div className="value">
+                <div className="bg-app-secondary p-3 rounded-lg text-center">
+                  <div className="text-2xl font-bold text-app-primary">
                     {scores[0].score_trimestriel?.toFixed(1) || "-"}
                   </div>
-                  <div className="label">Trimestriel</div>
+                  <div className="text-[11px] text-app-tertiary uppercase mt-1">
+                    Trimestriel
+                  </div>
                 </div>
-                <div className="score-item">
-                  <div className="value">
+                <div className="bg-app-secondary p-3 rounded-lg text-center">
+                  <div className="text-2xl font-bold text-app-primary">
                     {scores[0].score_annuel?.toFixed(1) || "-"}
                   </div>
-                  <div className="label">Annuel</div>
+                  <div className="text-[11px] text-app-tertiary uppercase mt-1">
+                    Annuel
+                  </div>
                 </div>
                 <div
-                  className="score-item"
-                  style={{
-                    gridColumn: "1 / -1",
-                    fontSize: "13px",
-                    color: "#94a3b8",
-                  }}
+                  className="bg-app-secondary p-3 rounded-lg text-sm text-app-tertiary"
+                  style={{ gridColumn: "1 / -1" }}
                 >
                   Dernière mise à jour :{" "}
                   {scores[0].mois
@@ -1602,20 +1212,16 @@ const CollaborateurFiche: React.FC = () => {
               </>
             ) : (
               <div
-                style={{
-                  color: "#94a3b8",
-                  textAlign: "center",
-                  padding: "12px",
-                  gridColumn: "1 / -1",
-                }}
+                className="text-app-tertiary text-center py-3"
+                style={{ gridColumn: "1 / -1" }}
               >
                 Aucun score enregistré
               </div>
             )}
-          </ScoreGrid>
-        </Section>
+          </div>
+        </div>
       </form>
-    </Container>
+    </div>
   );
 };
 
